@@ -214,3 +214,24 @@ model EmailSuggestion {
   @@unique([accountId, messageId])
   @@index([status, receivedAt])
 }
+
+/// ---------------------------------------------------------------------------
+/// Daily stoic thought and Bible verse — the ones you saved
+/// ---------------------------------------------------------------------------
+
+model SavedQuote {
+  id        String   @id @default(cuid())
+  kind      String // stoic | verse
+  /// Id of the quote in lib/daily-content.ts.
+  key       String
+  /// Copied when saved, so the list stays intact if the built-in list changes.
+  text      String
+  /// Author (stoic) or reference (verse), e.g. "Marcus Aurelius" / "Isaiah 40:31".
+  source    String
+  /// Work or translation, e.g. "Meditations 5.20" / "KJV".
+  detail    String?
+  theme     String?
+  createdAt DateTime @default(now())
+
+  @@unique([kind, key])
+}

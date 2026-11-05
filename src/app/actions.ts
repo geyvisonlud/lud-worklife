@@ -15,6 +15,7 @@ import { syncAllNotion, syncNotionConnection } from "@/lib/notion-sync";
 import { SETTING_KEYS, setSetting } from "@/lib/settings";
 import { gmailLink, taskNotesFromEmail } from "@/lib/email";
 import { scanAllEmail } from "@/lib/email-sync";
+import { findQuote, isQuoteKind } from "@/lib/daily";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -324,6 +325,26 @@ export async function scanEmailIfStale() {
 export async function setEmailEnabled(accountId: string, enabled: boolean) {
   await prisma.calendarAccount.update({ where: { id: accountId }, data: { emailEnabled: enabled } });
   if (!enabled) await prisma.emailSuggestion.updateMany({ where: { accountId, status: "pending" }, data: { status: "dismissed" } });
+  return done();
+}
+
+/* ------------------------------------------------------- saved quotes */
+
+/** Heart on Today's stoic thought / verse: saves a copy, or removes it. */
+export async function setQuoteSaved(kind: string, key: string, saved: boolean): Promise<ActionResult> {
+  if (!isQuoteKind(kind)) return fail("Unknown kind.");
+  if (!saved) {
+    await prisma.savedQuote.deleteMany({ where: { kind, key } });
+    return done();
+  }
+  const q = findQuote(kind, key);
+  if (!q) return fail("That quote no longer exists.");
+  await prisma.savedQuote.upsert({ where: { kind_key: { kind, key } }, create: { kind, key, ...q }, update: {} });
+  return done("Saved");
+}
+
+export async function deleteSavedQuote(id: string): Promise<ActionResult> {
+  await prisma.savedQuote.deleteMany({ where: { id } });
   return done();
 }
 

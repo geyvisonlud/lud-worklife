@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Agenda } from "@/components/Agenda";
 import { EmailSuggestions } from "@/components/EmailSuggestions";
+import { DailyInspiration } from "@/components/DailyInspiration";
+import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
+import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
 import { QuickAdd, TaskRow } from "@/components/TaskBits";
 import { Card, NotionMark, ProgressBar, ProjectGlyph, StatStrip, notionReasonLabel } from "@/components/ui";
@@ -27,6 +30,9 @@ export default async function TodayPage() {
     prisma.emailSuggestion.findMany({ where: { status: "pending", account: { emailEnabled: true } }, include: { account: { select: { email: true } } }, orderBy: [{ priority: "desc" }, { receivedAt: "desc" }], take: 12 }),
     prisma.calendarAccount.findMany({ select: { provider: true, scopes: true, emailEnabled: true, lastEmailScanAt: true } }),
   ]);
+  const saved = await prisma.savedQuote.findMany({ select: { kind: true, key: true } });
+  const stoic = stoicOfDay(day);
+  const verse = verseOfDay(day);
   const canScan = mailAccounts.some((a) => a.provider === "google" && a.emailEnabled && hasGmailScope(a.scopes));
   const lastScan = mailAccounts.reduce<Date | null>((m, a) => (a.lastEmailScanAt && (!m || a.lastEmailScanAt > m) ? a.lastEmailScanAt : m), null);
   // Today's events only (eventsBetween is padded by a day for time zones).
@@ -61,6 +67,12 @@ export default async function TodayPage() {
           Plan the week <ArrowRight size={14} />
         </Link>
       </header>
+
+      <DailyInspiration
+        stoicIndex={STOIC_QUOTES.indexOf(stoic)}
+        verseIndex={VERSES.indexOf(verse)}
+        saved={saved.map((s) => `${s.kind}:${s.key}`)}
+      />
 
       <StatStrip
         items={[

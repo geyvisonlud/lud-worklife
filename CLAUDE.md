@@ -27,7 +27,7 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 
 ## Where things are
 
-- `src/app/(app)/*` — pages: today (`page.tsx`), tasks, calendar, projects, projects/[id], connections
+- `src/app/(app)/*` — pages: today (`page.tsx`), tasks, calendar, projects, projects/[id], saved, connections
 - `src/app/actions.ts` — all server actions; return `ActionResult` (`{ ok: true, message? } | { ok: false, error }`), shown as toasts by `useReport()`
 - `src/components/TaskSheet.tsx` — `WorkProvider` (tz, today, projects, the single task editor, toasts) — open the editor with `useWork().openTask(task, defaults)`
 - `src/components/Kanban.tsx` — generic board + `ProjectBoard` / `TaskBoard`; `CalendarView.tsx` — grid, tray, drag/resize
@@ -49,6 +49,8 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   (Claude `claude-opus-5-5`, structured output, emails passed as data in `<email>` tags), `lib/email-sync.ts` (Gmail, read-only).
   Every analyzed email is stored in `EmailSuggestion` (pending/accepted/dismissed/none/skipped) so it's never analyzed twice.
   Keep marketing filtering in `screen` (cheap, tested) rather than in the prompt.
+- Daily thought/verse: content in `lib/daily-content.ts` (stable ids — saved quotes point to them; append, never renumber),
+  pick in `lib/daily.ts` (fixed per day, coprime stride so no repeats within a cycle). Saving copies the text into `SavedQuote`.
 - Database URL: `lib/db.ts` and `scripts/db-env.mjs` accept the names Vercel's Neon integration adds (`POSTGRES_URL`, …).
 - Put new logic in a pure function in `src/lib/` with a `*.test.ts` next to it.
 - **Schema changes:** edit `schema.prisma`, then `npx prisma migrate dev --name <change>` with the DB running. Never edit existing migrations.

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CheckCircle2, KanbanSquare, LogOut, PlugZap, Sun } from "lucide-react";
+import { CalendarDays, CheckCircle2, Heart, KanbanSquare, LogOut, PlugZap, Sun } from "lucide-react";
 import { logout } from "@/app/actions";
 
 const ITEMS = [
@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/tasks", label: "Tasks", icon: CheckCircle2, group: "Plan" },
   { href: "/calendar", label: "Calendar", icon: CalendarDays, group: "Plan" },
   { href: "/projects", label: "Projects", icon: KanbanSquare, group: "Work" },
+  { href: "/saved", label: "Saved", icon: Heart, group: "Work", desktopOnly: true },
   { href: "/connections", label: "Connections", icon: PlugZap, group: "Settings" },
 ];
 const GROUPS = ["Plan", "Work", "Settings"];
@@ -80,7 +81,7 @@ export function TabBar({ badges }: { badges: Badges }) {
   const path = usePathname();
   return (
     <nav className="glass fixed inset-x-0 bottom-0 z-30 flex border-t border-hairline pb-[env(safe-area-inset-bottom)] md:hidden">
-      {ITEMS.map(({ href, label, icon: Icon }) => {
+      {ITEMS.filter((i) => !("desktopOnly" in i)).map(({ href, label, icon: Icon }) => {
         const active = isActive(path, href);
         return (
           <Link key={href} href={href} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${active ? "text-accent" : "text-ink-2"}`}>
