@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  /// Direct (non-pooled) connection for migrations. On Neon: the same URL without "-pooler".
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+/// ---------------------------------------------------------------------------
+/// Calendars — any number of Google accounts, each with its calendars
+/// ---------------------------------------------------------------------------
+
+/// A connected Google account (personal, work, church…).
+model CalendarAccount {
+  id           String     @id @default(cuid())
+  provider     String     @default("google") // google | demo
+  email        String     @unique
+  name         String?
+  picture      String?
+  /// OAuth tokens, encrypted (AES-256-GCM).
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  status       String     @default("OK") // OK | RECONNECT | ERROR
+  lastError    String?
+  lastSyncedAt DateTime?
+  createdAt    DateTime   @default(now())
+  calendars    Calendar[]
+}
+
+model Calendar {
+  id          String          @id @default(cuid())
+  accountId   String
+  account     CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Google calendar id ("primary" calendars use the account email).
+  externalId  String
+  name        String
+  /// The color this calendar has in Google Calendar (current palette), hex.
+  color       String
+  /// Local override; null = keep the Google color.
+  customColor String?
+  primary     Boolean         @default(false)
+  canWrite    Boolean         @default(false)
+  /// Shown on the calendar and synced.
+  visible     Boolean         @default(true)
+  timeZone    String?
+  events      Event[]
+
+  @@unique([accountId, externalId])
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  calendarId     String
+  calendar       Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  externalId     String
+  title          String
+  description    String?
+  location       String?
+  start          DateTime
+  end            DateTime
+  allDay         Boolean  @default(false)
+  /// Color set on this event in Google (overrides the calendar color), hex.
+  color          String?
+  htmlLink       String?
+  meetLink       String?
+  /// Our response: accepted | tentative | declined | needsAction (null when we're the organizer).
+  responseStatus String?
+
+  @@unique([calendarId, externalId])
+  @@index([start])
+}
+
+/// ---------------------------------------------------------------------------
+/// Projects (Kanban by stage) and tasks (Kanban by status, schedulable)
+/// ---------------------------------------------------------------------------
+
+model Project {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  emoji           String?
+  /// Palette key from lib/colors.ts (PROJECT_COLORS).
+  color           String    @default("blue")
+  stage           String    @default("planned") // planned | active | hold | done
+  position        Float     @default(0)
+  dueDate         String? // YYYY-MM-DD
+  archived        Boolean   @default(false)
+  source          String    @default("local") // local | notion
+  /// Notion page this project was imported from.
+  notionPageId    String?   @unique
+  notionUrl       String?
+  /// Where the page lives in Notion (database or parent page title).
+  notionParent    String?
+  notionWorkspace String?
+  /// The page's status property in Notion, as written there.
+  notionStatus    String?
+  /// Why it was imported: assigned (a people property) | mentioned (an @mention in the page).
+  notionReason    String?
+  /// Simplified page content (see lib/notion.ts SimpleBlock[]).
+  notionContent   Json?
+  notionEditedAt  DateTime?
+  notionSyncedAt  DateTime?
+  /// The stage was changed here, so Notion's status no longer moves it.
+  stageOverridden Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tasks           Task[]
+}
+
+model Task {
+  id               String    @id @default(cuid())
+  title            String
+  notes            String?
+  projectId        String?
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status           String    @default("todo") // backlog | todo | doing | done
+  /// 0 none · 1 low · 2 medium · 3 high
+  priority         Int       @default(0)
+  position         Float     @default(0)
+  dueDate          String? // YYYY-MM-DD
+  durationMin      Int       @default(30)
+  /// Set when the task is dropped on the calendar.
+  scheduledStart   DateTime?
+  /// Event created in Google for this time block (see Settings → "Add scheduled tasks to").
+  googleEventId    String?
+  googleCalendarId String?
+  /// to_do block this task came from (Notion import).
+  notionBlockId    String?   @unique
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([scheduledStart])
+}
+
+/// ---------------------------------------------------------------------------
+/// Notion
+/// ---------------------------------------------------------------------------
+
+model NotionConnection {
+  id            String    @id @default(cuid())
+  method        String    @default("oauth") // oauth | token | demo
+  workspaceId   String    @unique
+  workspaceName String
+  workspaceIcon String?
+  /// Encrypted access token (OAuth) or internal integration secret.
+  accessToken   String?
+  /// "Me" in that workspace: pages that mention or assign this user are imported.
+  userId        String
+  userName      String?
+  userEmail     String?
+  status        String    @default("OK") // OK | ERROR
+  lastError     String?
+  /// Pages edited after this are looked at on the next sync.
+  lastSyncedAt  DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model SyncRun {
+  id         String    @id @default(cuid())
+  kind       String // google | notion
+  status     String    @default("RUNNING") // RUNNING | SUCCESS | ERROR
+  message    String?
+  imported   Int       @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+}
+
+model Setting {
+  key   String @id
+  value String
+}

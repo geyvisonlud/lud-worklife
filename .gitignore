@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.env
+.env*.local
+# any other env copies (e.g. .env.local-backup); the example stays tracked
+.env.*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.pgdata
+
+# Neon CLI link (org/project/branch IDs)
+.neon

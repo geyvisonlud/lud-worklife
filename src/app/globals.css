@@ -1,0 +1,580 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------- tokens
+   "Quiet ledger": warm off-white page, white cards with hairline borders, near-black ink,
+   one blue for things you can press, green/amber/red reserved for status.
+   UI text is Geist; section labels are Geist Mono caps; the serif (Instrument Serif)
+   is kept for feature moments (project covers, login). Chart colors (--c1…--c4) are
+   validated for color-vision deficiency. */
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f4f4f1;
+  --surface-3: #eaeae6;
+  --glass: rgba(247, 247, 245, 0.72);
+  /* Frosted cards: translucent surface + backdrop blur over a soft page glow. */
+  --card-bg: rgba(255, 255, 255, 0.7);
+  --card-bg-strong: rgba(255, 255, 255, 0.86);
+  --card-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  --glow-1: rgba(10, 102, 255, 0.14);
+  --glow-2: rgba(162, 63, 214, 0.1);
+  --glow-3: rgba(31, 157, 85, 0.09);
+  --hairline: rgba(24, 24, 20, 0.075);
+  --hairline-strong: rgba(24, 24, 20, 0.13);
+  --ink: #151513;
+  --ink-2: #66665f;
+  --ink-3: #a1a19a;
+  --accent: #0a66ff;
+  --accent-soft: rgba(10, 102, 255, 0.08);
+  --good: #13804a;
+  --warn: #b95a00;
+  --bad: #d1242f;
+  --good-soft: rgba(19, 128, 74, 0.1);
+  --warn-soft: rgba(245, 158, 11, 0.14);
+  --bad-soft: rgba(209, 36, 47, 0.08);
+  --c1: #0a6fe0;
+  --c2: #e8590c;
+  --c3: #1f9d55;
+  --c4: #a23fd6;
+  --line: #3b94f0;
+  --grid: rgba(24, 24, 20, 0.07);
+  --shadow: 0 1px 1px rgba(24, 24, 20, 0.02);
+  --shadow-lift: 0 1px 2px rgba(24, 24, 20, 0.05), 0 12px 32px -12px rgba(24, 24, 20, 0.16);
+  --ring: 0 0 0 3px rgba(10, 102, 255, 0.24);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0c0b;
+    --surface: #151514;
+    --surface-2: #1c1c1a;
+    --surface-3: #262623;
+    --glass: rgba(14, 14, 13, 0.7);
+    --card-bg: rgba(26, 26, 24, 0.62);
+    --card-bg-strong: rgba(26, 26, 24, 0.86);
+    --card-edge: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --glow-1: rgba(59, 139, 255, 0.18);
+    --glow-2: rgba(193, 123, 240, 0.11);
+    --glow-3: rgba(60, 194, 115, 0.06);
+    --hairline: rgba(255, 255, 250, 0.07);
+    --hairline-strong: rgba(255, 255, 250, 0.12);
+    --ink: #f3f3ef;
+    --ink-2: #a0a098;
+    --ink-3: #64645d;
+    --accent: #3b8bff;
+    --accent-soft: rgba(59, 139, 255, 0.15);
+    --good: #34c77b;
+    --warn: #f5a524;
+    --bad: #ff5a5f;
+    --good-soft: rgba(52, 199, 123, 0.13);
+    --warn-soft: rgba(245, 165, 36, 0.14);
+    --bad-soft: rgba(255, 90, 95, 0.13);
+    --c1: #3d95ff;
+    --c2: #ff8a3d;
+    --c3: #3cc273;
+    --c4: #c17bf0;
+    --line: #4ba3ff;
+    --grid: rgba(255, 255, 250, 0.07);
+    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.01);
+    --shadow-lift: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 16px 40px -16px rgba(0, 0, 0, 0.8);
+    --ring: 0 0 0 3px rgba(59, 139, 255, 0.4);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-good-soft: var(--good-soft);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad-soft: var(--bad-soft);
+  --font-sans: var(--font-geist), -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-display: var(--font-instrument), "New York", Georgia, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html,
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.006em;
+  font-feature-settings: "ss01", "cv11";
+}
+
+body {
+  background-image:
+    radial-gradient(1100px 620px at 8% -8%, var(--glow-1), transparent 62%),
+    radial-gradient(900px 560px at 100% 4%, var(--glow-2), transparent 60%),
+    radial-gradient(900px 700px at 55% 112%, var(--glow-3), transparent 62%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: 10px;
+}
+
+/* Grid/flex children may shrink below their content (long merchant names truncate instead of overflowing). */
+.grid > *,
+.card {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------- surfaces */
+.card {
+  --pad-x: 18px;
+  --pad-y: 16px;
+  background: var(--card-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  box-shadow: var(--card-edge), var(--shadow);
+  padding: var(--pad-y) var(--pad-x);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+/* Cards that are links lift a little on hover. */
+a.card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--card-edge), var(--shadow-lift);
+}
+@media (min-width: 768px) {
+  .card {
+    --pad-x: 20px;
+    --pad-y: 18px;
+  }
+}
+
+/* Card header: mono caps label on a hairline-separated strip. */
+.card-head {
+  margin: calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) var(--pad-y);
+  padding: 10px var(--pad-x);
+  min-height: 46px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+}
+
+/* Sheets (dialogs) are frosted too. */
+dialog.sheet {
+  background: var(--card-bg-strong) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .card,
+  dialog.sheet {
+    background: var(--surface) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* ---------------------------------------------------------- typography */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
+.title-xl {
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+@media (min-width: 768px) {
+  .title-xl {
+    font-size: 24px;
+  }
+}
+
+/* Serif for feature moments (project covers, login). */
+.title-serif {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+}
+@media (min-width: 768px) {
+  .title-serif {
+    font-size: 44px;
+  }
+}
+
+/* "NET WORTH ›" — section labels in mono caps. */
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-2);
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0.01em;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+}
+
+/* -------------------------------------------------------------- controls */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.45;
+}
+.btn-primary {
+  background: var(--ink);
+  color: var(--surface);
+}
+.btn-primary:hover {
+  box-shadow: 0 6px 18px -8px rgba(14, 17, 22, 0.5);
+}
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+}
+.btn-secondary:hover {
+  background: var(--surface-2);
+}
+.btn-plain {
+  color: var(--accent);
+  padding-inline: 8px;
+  font-weight: 550;
+}
+
+.input {
+  width: 100%;
+  background: var(--surface-2);
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-size: 15px;
+  outline: none;
+  border: 1px solid var(--hairline);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.input:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.list-row + .list-row {
+  border-top: 1px solid var(--hairline);
+}
+
+.progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Balance-sheet ribbon: what net worth is made of (signature of the overview). */
+.ribbon {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+}
+.ribbon > span {
+  border-radius: 4px;
+  min-width: 6px;
+}
+.ribbon > span.liability {
+  background-image: repeating-linear-gradient(135deg, var(--bad) 0 2px, transparent 2px 6px);
+  box-shadow: inset 0 0 0 1.5px var(--bad);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: fade-up 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------- iOS components */
+dialog.sheet[open] {
+  animation: sheet-up 0.32s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.switch {
+  appearance: none;
+  flex-shrink: 0;
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  background: var(--ink-3);
+  position: relative;
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+.switch:checked {
+  background: #34c759;
+}
+.switch:checked::after {
+  transform: translateX(20px);
+}
+.switch:focus-visible {
+  outline: 3px solid var(--accent-soft);
+}
+
+.segmented {
+  display: flex;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 2px;
+}
+.segmented label {
+  flex: 1;
+  cursor: pointer;
+}
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.segmented span {
+  display: block;
+  text-align: center;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: background 0.15s ease;
+}
+.segmented input:checked + span {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--accent);
+}
+
+.btn-danger {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.row-button {
+  width: 100%;
+  text-align: left;
+  border-radius: 12px;
+  transition: background 0.15s ease;
+}
+.row-button:hover {
+  background: var(--surface-2);
+}
+
+.btn-ghost {
+  color: var(--ink-2);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.btn-ghost:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #0e1116 !important;
+  }
+  .print-sheet {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+}
+
+/* Pill tabs ("Overview · Accounts · Checkup") and range chips ("1W 1M 3M"). */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--card-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--hairline);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pill:hover {
+  background: var(--surface-2);
+}
+.pill[aria-current="page"],
+.pill[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: transparent;
+}
+.chip {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+}
+.chip:hover {
+  color: var(--ink);
+}
+.chip[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Round icon buttons in the page header. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--card-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--hairline);
+  color: var(--ink-2);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.icon-btn:disabled {
+  opacity: 0.5;
+}
+
+/* Small segmented control in card corners ("Net worth · Assets · Debt"). */
+.seg-sm {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.seg-sm button {
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.seg-sm button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
