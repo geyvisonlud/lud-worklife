@@ -86,7 +86,7 @@ function QuoteCard({ kind, initial, savedKeys, onToggle }: { kind: QuoteKind; in
         </div>
       </div>
       <blockquote className="flex flex-1 flex-col justify-center">
-        <p className={`display leading-[1.22] ${text.length > 180 ? "text-[20px] md:text-[22px]" : text.length > 110 ? "text-[23px] md:text-[25px]" : "text-[26px] md:text-[30px]"}`}>
+        <p className={`font-sans font-thin tracking-[-0.025em] leading-[1.28] ${text.length > 180 ? "text-[20px] md:text-[22px]" : text.length > 110 ? "text-[23px] md:text-[25px]" : "text-[26px] md:text-[30px]"}`}>
           “{text}”
         </p>
         <footer className="mt-3 text-[13px] text-ink-2">

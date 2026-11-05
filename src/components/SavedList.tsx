@@ -22,7 +22,7 @@ export function SavedList({ items }: { items: SavedDTO[] }) {
             <span className="label-mono !text-[10px]">{q.kind === "stoic" ? "Stoic" : q.theme ?? "Verse"}</span>
             <span className="ml-auto">Saved {new Date(q.savedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
           </div>
-          <p className="display flex-1 text-[22px] leading-[1.25]">“{q.text}”</p>
+          <p className="flex-1 font-sans text-[20px] font-thin leading-[1.32] tracking-[-0.02em]">“{q.text}”</p>
           <div className="mt-3 flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">
               <span className="font-medium text-ink">{q.source}</span>
