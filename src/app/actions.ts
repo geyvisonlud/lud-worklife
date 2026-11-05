@@ -13,6 +13,8 @@ import { mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/li
 import { findUserByEmail, notionApi } from "@/lib/notion";
 import { syncAllNotion, syncNotionConnection } from "@/lib/notion-sync";
 import { SETTING_KEYS, setSetting } from "@/lib/settings";
+import { gmailLink, taskNotesFromEmail } from "@/lib/email";
+import { scanAllEmail } from "@/lib/email-sync";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -273,6 +275,56 @@ export async function syncNotionNow(): Promise<ActionResult> {
 export async function refreshNotionProject(id: string) {
   await prisma.project.update({ where: { id }, data: { notionEditedAt: null } });
   return syncNotionNow();
+}
+
+/* ------------------------------------------------------- email suggestions */
+
+/** "Add task": the suggestion becomes a real task (with a link back to the email). */
+export async function acceptEmailSuggestion(id: string, edit?: { title?: string; dueDate?: string | null }): Promise<ActionResult> {
+  const s = await prisma.emailSuggestion.findUnique({ where: { id }, include: { account: true } });
+  if (!s || s.status !== "pending") return fail("That suggestion is gone.");
+  const first = await prisma.task.findFirst({ where: { status: "todo", projectId: null }, orderBy: { position: "asc" } });
+  const dueDate = edit?.dueDate !== undefined ? edit.dueDate : s.dueDate;
+  const task = await prisma.task.create({
+    data: {
+      title: clean(edit?.title, 300) || s.title || s.subject,
+      notes: taskNotesFromEmail(s, gmailLink(s.account.email, s.threadId)),
+      dueDate: isYmd(dueDate) ? dueDate : null,
+      priority: s.priority,
+      position: (first?.position ?? 1024) - 1024,
+    },
+  });
+  await prisma.emailSuggestion.update({ where: { id }, data: { status: "accepted", taskId: task.id } });
+  return done("Added to your tasks");
+}
+
+export async function dismissEmailSuggestion(id: string): Promise<ActionResult> {
+  await prisma.emailSuggestion.updateMany({ where: { id, status: "pending" }, data: { status: "dismissed" } });
+  return done();
+}
+
+export async function scanEmailNow(): Promise<ActionResult> {
+  const r = await scanAllEmail();
+  if (r.errors.length) return fail(r.errors.join(" · "));
+  if (!r.accounts) return fail("Connect a Google account with Gmail access first (Connections).");
+  return done(r.suggested ? `${r.suggested} possible task${r.suggested === 1 ? "" : "s"} from ${r.read} new email${r.read === 1 ? "" : "s"}` : `${r.read} new email${r.read === 1 ? "" : "s"} — nothing needs you`);
+}
+
+/** Called when Today opens: scans if the last scan is older than 15 minutes. */
+export async function scanEmailIfStale() {
+  const stale = await prisma.calendarAccount.findFirst({
+    where: { provider: "google", emailEnabled: true, scopes: { contains: "gmail.readonly" }, OR: [{ lastEmailScanAt: null }, { lastEmailScanAt: { lt: new Date(Date.now() - 15 * 60_000) } }] },
+  });
+  if (!stale) return { scanned: false };
+  await scanAllEmail();
+  revalidatePath("/", "layout");
+  return { scanned: true };
+}
+
+export async function setEmailEnabled(accountId: string, enabled: boolean) {
+  await prisma.calendarAccount.update({ where: { id: accountId }, data: { emailEnabled: enabled } });
+  if (!enabled) await prisma.emailSuggestion.updateMany({ where: { accountId, status: "pending" }, data: { status: "dismissed" } });
+  return done();
 }
 
 /* -------------------------------------------------------------- settings */

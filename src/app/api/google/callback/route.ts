@@ -4,6 +4,7 @@ import { encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { calendarRedirectUri, exchangeCode, idTokenProfile } from "@/lib/google";
 import { syncAccount } from "@/lib/google-sync";
+import { scanAccount } from "@/lib/email-sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,10 +28,12 @@ export async function GET(req: Request) {
       expiresAt: new Date(Date.now() + t.expires_in * 1000),
       status: "OK",
       lastError: null,
+      scopes: t.scope ?? null,
       ...(t.refresh_token ? { refreshToken: encrypt(t.refresh_token) } : {}),
     };
     const account = await prisma.calendarAccount.upsert({ where: { email: profile.email }, create: { email: profile.email, ...data }, update: data });
     await syncAccount(account.id).catch((e) => console.error("first calendar sync", e));
+    await scanAccount(account.id).catch((e) => console.error("first email scan", e));
     return back(`connected=${encodeURIComponent(profile.email)}`);
   } catch (e) {
     console.error("google callback", e);

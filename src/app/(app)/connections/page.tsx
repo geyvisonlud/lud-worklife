@@ -1,4 +1,4 @@
-import { CalendarRow, DisconnectButton, NotionTokenForm, SyncButton } from "@/components/ConnectionBits";
+import { EmailToggle, CalendarRow, DisconnectButton, NotionTokenForm, SyncButton } from "@/components/ConnectionBits";
 import { Field } from "@/components/Sheet";
 import { Card, GoogleMark, NotionMark, PageHeader } from "@/components/ui";
 import { saveSettings } from "@/app/actions";
@@ -9,6 +9,8 @@ import { calendarDTO, lastSyncs } from "@/lib/data";
 import { googleConfigured } from "@/lib/google";
 import { notionOAuthConfigured } from "@/lib/notion";
 import { getSettings } from "@/lib/settings";
+import { hasGmailScope } from "@/lib/email";
+import { aiConfigured } from "@/lib/email-ai";
 
 const MESSAGES: Record<string, string> = {
   google_config: "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to connect Google calendars.",
@@ -43,7 +45,8 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
       <Card title="Google Calendar" action={accounts.some((a) => a.provider === "google") ? <SyncButton kind="google" /> : null}>
         <p className="mb-4 text-[13.5px] text-ink-2">
           Connect every Google account you use — personal, work, church. Each calendar keeps the color you gave it in Google. Events sync every few minutes while
-          the calendar is open, and on the scheduled sync.
+          the calendar is open, and on the scheduled sync. The inbox is read (never changed) to suggest possible tasks on Today{" "}
+          {aiConfigured() ? "— Claude reads new emails and picks out what asks something of you." : "— set ANTHROPIC_API_KEY to let Claude read them; until then, simple rules catch clear requests."}
         </p>
         <div className="space-y-4">
           {accounts.map((a) => (
@@ -78,6 +81,20 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
                   </a>
                 )}
                 <DisconnectButton kind="google" id={a.id} label={a.email} />
+              </div>
+              <div className="border-b border-hairline">
+                {a.provider === "demo" ? (
+                  <p className="py-2 text-[12.5px] text-ink-3">Demo account — inbox scanning needs a real Google connection.</p>
+                ) : hasGmailScope(a.scopes) ? (
+                  <EmailToggle accountId={a.id} enabled={a.emailEnabled} />
+                ) : (
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <span className="text-[13px] text-ink-2">Gmail access wasn't granted, so this inbox isn't checked for possible tasks.</span>
+                    <a href={`/api/google/connect?hint=${encodeURIComponent(a.email)}`} className="btn btn-secondary shrink-0">
+                      Allow Gmail
+                    </a>
+                  </div>
+                )}
               </div>
               <ul>
                 {a.calendars.map((c) => (

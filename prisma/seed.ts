@@ -90,6 +90,18 @@ async function main() {
     })),
   });
 
+  /* ------------------------------------------------- possible tasks (email) */
+  const ago = (h: number) => new Date(Date.now() - h * 3600_000);
+  const mail = (accountId: string, i: number, o: Partial<Prisma.EmailSuggestionUncheckedCreateInput> & { fromEmail: string; subject: string }) =>
+    prisma.emailSuggestion.create({ data: { accountId, messageId: `demo-mail-${i}`, threadId: `demo-thread-${i}`, receivedAt: ago(i * 3), source: "claude", ...o } });
+  await mail(work.id, 1, { fromName: "Marina Souza", fromEmail: "marina@acme.co", subject: "Q1 budget — need your sign-off", title: "Approve the Q1 onboarding budget", reason: "Asks you to sign off before finance closes the quarter", dueDate: addDays(today, 1), priority: 3, status: "pending" });
+  await mail(work.id, 2, { fromName: "Rafael Lima", fromEmail: "rafael@acme.co", subject: "Re: Wizard wireframes", title: "Give Rafael feedback on the wizard wireframes", reason: "Waiting on your review to start the build", priority: 2, status: "pending" });
+  await mail(personal.id, 3, { fromName: "Pastor João", fromEmail: "joao@igrejacentral.org", subject: "Ensaio da cantata", title: "Confirmar presença no ensaio de sábado", reason: "Asks you to confirm by Friday", dueDate: addDays(week, 5), priority: 1, status: "pending" });
+  await mail(personal.id, 4, { fromName: "Smile Dental", fromEmail: "frontdesk@smiledental.com", subject: "Please complete your patient form", title: "Fill out the dental patient form", reason: "Needed before your appointment", dueDate: addDays(week, 2), priority: 1, status: "pending", source: "rules" });
+  await mail(personal.id, 5, { fromEmail: "deals@shop.example.com", subject: "48h flash sale 🔥", status: "skipped", reason: "Gmail promotions tab" });
+  await mail(work.id, 6, { fromName: "Marina Souza", fromEmail: "marina@acme.co", subject: "FYI: deck is in the drive", status: "none" });
+  await prisma.calendarAccount.updateMany({ data: { lastEmailScanAt: ago(0.2) } });
+
   /* --------------------------------------------------------------- notion */
   await prisma.notionConnection.create({
     data: { method: "demo", workspaceId: "demo-acme", workspaceName: "Acme Co.", userId: ME, userName: "Geyvison Ludugério", userEmail: "geyvison@acme.co", lastSyncedAt: new Date(Date.now() - 18 * 60_000) },

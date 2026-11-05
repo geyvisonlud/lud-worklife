@@ -15,20 +15,26 @@ datasource db {
 
 /// A connected Google account (personal, work, church…).
 model CalendarAccount {
-  id           String     @id @default(cuid())
-  provider     String     @default("google") // google | demo
-  email        String     @unique
-  name         String?
-  picture      String?
+  id              String            @id @default(cuid())
+  provider        String            @default("google") // google | demo
+  email           String            @unique
+  name            String?
+  picture         String?
   /// OAuth tokens, encrypted (AES-256-GCM).
-  accessToken  String?
-  refreshToken String?
-  expiresAt    DateTime?
-  status       String     @default("OK") // OK | RECONNECT | ERROR
-  lastError    String?
-  lastSyncedAt DateTime?
-  createdAt    DateTime   @default(now())
-  calendars    Calendar[]
+  accessToken     String?
+  refreshToken    String?
+  expiresAt       DateTime?
+  status          String            @default("OK") // OK | RECONNECT | ERROR
+  lastError       String?
+  lastSyncedAt    DateTime?
+  /// OAuth scopes granted (space-separated); Gmail suggestions need gmail.readonly.
+  scopes          String?
+  /// Read this account's inbox for possible tasks.
+  emailEnabled    Boolean           @default(true)
+  lastEmailScanAt DateTime?
+  createdAt       DateTime          @default(now())
+  calendars       Calendar[]
+  emails          EmailSuggestion[]
 }
 
 model Calendar {
@@ -173,4 +179,38 @@ model SyncRun {
 model Setting {
   key   String @id
   value String
+}
+
+/// ---------------------------------------------------------------------------
+/// Possible tasks found in email
+/// ---------------------------------------------------------------------------
+
+/// One analyzed email. Messages that need nothing from you are kept as "none"/"skipped" so they're
+/// never analyzed twice; only "pending" rows show on Today.
+model EmailSuggestion {
+  id         String          @id @default(cuid())
+  accountId  String
+  account    CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messageId  String
+  threadId   String
+  fromName   String?
+  fromEmail  String
+  subject    String
+  snippet    String?
+  receivedAt DateTime
+  /// pending (shown) | accepted (became a task) | dismissed | none (no action) | skipped (marketing/automated)
+  status     String          @default("pending")
+  /// The suggested task.
+  title      String?
+  /// Why it needs you, in a few words ("Asks you to approve the budget").
+  reason     String?
+  dueDate    String? // YYYY-MM-DD
+  priority   Int             @default(0)
+  /// claude | rules — what found it.
+  source     String          @default("rules")
+  taskId     String?
+  createdAt  DateTime        @default(now())
+
+  @@unique([accountId, messageId])
+  @@index([status, receivedAt])
 }

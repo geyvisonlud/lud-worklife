@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { RefreshCw, Unplug } from "lucide-react";
-import { connectNotionToken, disconnectCalendarAccount, disconnectNotion, setCalendarColor, setCalendarVisible, syncCalendarsNow, syncNotionNow, type ActionResult } from "@/app/actions";
+import { setEmailEnabled, connectNotionToken, disconnectCalendarAccount, disconnectNotion, setCalendarColor, setCalendarVisible, syncCalendarsNow, syncNotionNow, type ActionResult } from "@/app/actions";
 import { CALENDAR_SWATCHES } from "@/lib/colors";
 import type { CalendarDTO } from "@/lib/data";
 import { useReport } from "./TaskSheet";
@@ -127,5 +127,32 @@ export function NotionTokenForm({ defaultEmail }: { defaultEmail: string }) {
         {pending ? "Connecting…" : "Connect with a secret"}
       </button>
     </form>
+  );
+}
+
+/** Per-account switch: look in this inbox for possible tasks. */
+export function EmailToggle({ accountId, enabled }: { accountId: string; enabled: boolean }) {
+  const report = useReport();
+  const [on, setOn] = useState(enabled);
+  const [, start] = useTransition();
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-4 py-2">
+      <span>
+        <span className="block text-[14px]">Find possible tasks in this inbox</span>
+        <span className="block text-[11.5px] text-ink-3">Read-only · marketing, newsletters and automated mail are skipped</span>
+      </span>
+      <input
+        type="checkbox"
+        className="switch"
+        checked={on}
+        onChange={() => {
+          const next = !on;
+          setOn(next);
+          start(async () => {
+            if (!report(await setEmailEnabled(accountId, next))) setOn(!next);
+          });
+        }}
+      />
+    </label>
   );
 }

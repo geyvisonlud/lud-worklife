@@ -45,6 +45,11 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 - Notion: read-only. `importPage` decides by `assignedVia` (People property) or `@mention`; `stageOverridden` stops Notion's
   status from moving a card the user moved.
 - Tokens (Google, Notion) are encrypted with `lib/crypto.ts`.
+- Email → possible tasks: `lib/email.ts` (parse, `screen` drops marketing/automated mail, keyword fallback), `lib/email-ai.ts`
+  (Claude `claude-opus-5-5`, structured output, emails passed as data in `<email>` tags), `lib/email-sync.ts` (Gmail, read-only).
+  Every analyzed email is stored in `EmailSuggestion` (pending/accepted/dismissed/none/skipped) so it's never analyzed twice.
+  Keep marketing filtering in `screen` (cheap, tested) rather than in the prompt.
+- Database URL: `lib/db.ts` and `scripts/db-env.mjs` accept the names Vercel's Neon integration adds (`POSTGRES_URL`, …).
 - Put new logic in a pure function in `src/lib/` with a `*.test.ts` next to it.
 - **Schema changes:** edit `schema.prisma`, then `npx prisma migrate dev --name <change>` with the DB running. Never edit existing migrations.
 - Never run `npm run db:seed` against a remote database — it wipes everything.

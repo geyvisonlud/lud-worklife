@@ -18,11 +18,13 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@prisma/client": "6.19.3",
     "lucide-react": "1.66.0",
     "next": "15.5.28",
     "react": "19.1.10",
-    "react-dom": "19.1.10"
+    "react-dom": "19.1.10",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

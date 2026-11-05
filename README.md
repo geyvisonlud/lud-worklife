@@ -13,6 +13,11 @@ calendars**:
   Assignee, Team…) are **imported automatically** as projects, with a read-only copy of the page. To-dos that @mention you
   become tasks, and the page's status ("In progress", "Em andamento", "Done"…) places the card on the board.
 
+- **Possible tasks from email** on Today: new inbox mail in every connected Google account is read (never changed);
+  newsletters, marketing and automated mail are dropped, and **Claude** picks out what actually asks something of you —
+  "Approve the Q1 budget", "Confirmar presença no ensaio de sábado" — with a due date when the email gives one. **Add task**
+  turns it into a task with a link back to the thread; **×** dismisses it.
+
 ![Today](docs/today.png)
 
 ## Screens
@@ -69,6 +74,27 @@ Scheduled tasks: in **Connections → Scheduling → Add scheduled tasks to**, p
 calendar then creates an event there (marked with the task id, so it isn't shown twice); moving, resizing, unscheduling or
 deleting the task updates the event.
 
+### Possible tasks from email (Gmail)
+
+Connecting a Google account also asks for **read-only Gmail** access (enable the **Gmail API** in the same Google Cloud
+project). Accounts connected before this feature show **Allow Gmail** in Connections. Each scan (when Today opens, if the
+last one is older than 15 minutes, on **↻**, and on the scheduled sync) reads up to 40 new inbox emails per account:
+
+1. **Skipped without reading further:** Promotions / Social / Forums tabs, anything with `List-Unsubscribe`/`List-Id`, bulk
+   precedence, marketing-platform headers, `no-reply`/`newsletter`/`notifications` senders, auto-replies, unsubscribe
+   footers, and your own mail.
+2. **The rest goes to Claude** (`claude-opus-5-5`, low effort, structured output) with today's date, in batches of 12. Only
+   the new part of each message is sent (quoted replies are cut), at most 4,000 characters. Email text is treated as data —
+   the prompt tells Claude to ignore instructions inside emails. Set `ANTHROPIC_API_KEY`; without it, conservative
+   keyword rules (English and Portuguese: "can you…", "please…", "pode…?", "por favor", "até sexta") are used instead.
+3. Every analyzed email is remembered, so nothing is read twice or suggested again after you dismiss it. Turn an inbox off
+   with **Find possible tasks in this inbox** in Connections.
+
+> Google treats Gmail read access as a *restricted* scope. For your own use, keep the OAuth app in **Testing** with your
+> accounts as test users — but in Testing mode Google expires refresh tokens after **7 days**, so you'll see "Reconnect"
+> weekly. To avoid that, publish the app (Google reviews apps using Gmail scopes) or use a Google Workspace "Internal" app
+> for work accounts.
+
 ### Notion (your company workspace)
 
 Two ways — the app only sees pages **shared with the integration**:
@@ -92,11 +118,22 @@ another column here stops Notion's status from moving it back. Nothing is ever w
   free plan allows one cron a day) and `.github/workflows/sync.yml` calls it every 30 minutes (set the `APP_URL` and
   `CRON_SECRET` repository secrets). `npm run sync` does the same from a terminal.
 
-## Deploy (Vercel + Neon)
+## Deploy (Vercel + Neon) — separate from Lud Finances
 
-Same as Lud Finances: create a Postgres database (Neon), set the variables from `.env.example` (`DATABASE_URL`, `SESSION_SECRET`,
-`ENCRYPTION_KEY`, `APP_URL`, `ALLOWED_EMAILS`, Google and Notion keys, `CRON_SECRET`, `APP_TIMEZONE`) and deploy — the build
-applies migrations. Google and Notion tokens are stored encrypted (AES-256-GCM).
+Use **its own** Vercel project and **its own** Neon project (never point it at the finance database — `db:seed` and the
+migrations are different apps).
+
+1. **Neon:** create a new project (e.g. `lud-worklife`). Either connect it from **Vercel → Project → Storage → Connect
+   Database → Neon** (adds `DATABASE_URL`/`POSTGRES_URL` and the unpooled URL for you), or copy the **pooled** connection
+   string into `DATABASE_URL` yourself — the build derives the direct URL by dropping `-pooler`. Accepted names:
+   `DATABASE_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL` and `DATABASE_URL_UNPOOLED`, `POSTGRES_URL_NON_POOLING`.
+2. **Vercel → Settings → Environment Variables** (Production and Preview): `SESSION_SECRET`, `ENCRYPTION_KEY`
+   (`openssl rand -hex 32` each), `APP_URL` (`https://<your-project>.vercel.app`), `ALLOWED_EMAILS`, `APP_TIMEZONE`,
+   `OWNER_NAME`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `ANTHROPIC_API_KEY`, `CRON_SECRET`, and the Notion keys if you use OAuth.
+3. **Google Cloud:** add `<APP_URL>/api/google/callback` and `<APP_URL>/api/auth/google/callback` to the OAuth client's
+   redirect URIs (a separate OAuth client from the finance app is cleanest).
+4. **Production branch:** set it to `main` once the PR is merged (Vercel → Settings → Git).
+5. Deploy. The build runs `prisma migrate deploy`; if no database variable is found it stops with a message saying what to set.
 
 ## Architecture
 

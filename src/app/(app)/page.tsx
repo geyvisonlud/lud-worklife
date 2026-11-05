@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Agenda } from "@/components/Agenda";
+import { EmailSuggestions } from "@/components/EmailSuggestions";
+import { gmailLink, hasGmailScope } from "@/lib/email";
 import { QuickAdd, TaskRow } from "@/components/TaskBits";
 import { Card, NotionMark, ProgressBar, ProjectGlyph, StatStrip, notionReasonLabel } from "@/components/ui";
 import { projectColor } from "@/lib/colors";
@@ -21,6 +23,12 @@ export default async function TodayPage() {
     prisma.calendar.findMany({ select: { id: true, name: true } }),
     prisma.notionConnection.findFirst({ orderBy: { lastSyncedAt: "desc" } }),
   ]);
+  const [suggestions, mailAccounts] = await Promise.all([
+    prisma.emailSuggestion.findMany({ where: { status: "pending", account: { emailEnabled: true } }, include: { account: { select: { email: true } } }, orderBy: [{ priority: "desc" }, { receivedAt: "desc" }], take: 12 }),
+    prisma.calendarAccount.findMany({ select: { provider: true, scopes: true, emailEnabled: true, lastEmailScanAt: true } }),
+  ]);
+  const canScan = mailAccounts.some((a) => a.provider === "google" && a.emailEnabled && hasGmailScope(a.scopes));
+  const lastScan = mailAccounts.reduce<Date | null>((m, a) => (a.lastEmailScanAt && (!m || a.lastEmailScanAt > m) ? a.lastEmailScanAt : m), null);
   // Today's events only (eventsBetween is padded by a day for time zones).
   const [d0, d1] = dayBounds(day, tz);
   const todaysEvents = events.filter((e) =>
@@ -61,6 +69,26 @@ export default async function TodayPage() {
           { label: "Meetings", value: sum.meetingMin ? formatDuration(sum.meetingMin) : "None", hint: `${sum.events} event${sum.events === 1 ? "" : "s"} today` },
           { label: "Focus blocks", value: sum.focusMin ? formatDuration(sum.focusMin) : "None", tone: sum.focusMin ? "good" : undefined, hint: "Tasks on the calendar" },
         ]}
+      />
+
+      <EmailSuggestions
+        items={suggestions.map((s) => ({
+          id: s.id,
+          title: s.title ?? s.subject,
+          reason: s.reason,
+          dueDate: s.dueDate,
+          priority: s.priority,
+          fromName: s.fromName,
+          fromEmail: s.fromEmail,
+          subject: s.subject,
+          receivedAt: s.receivedAt.toISOString(),
+          link: gmailLink(s.account.email, s.threadId),
+          account: s.account.email,
+          source: s.source,
+        }))}
+        canScan={canScan}
+        lastScan={lastScan?.toISOString() ?? null}
+        multipleAccounts={new Set(suggestions.map((s) => s.accountId)).size > 1}
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">

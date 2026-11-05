@@ -17,6 +17,8 @@ export const CALENDAR_SCOPES = [
   "profile",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
+  // Read-only: the inbox is scanned for possible tasks (Today → Possible tasks). Nothing is sent or changed.
+  "https://www.googleapis.com/auth/gmail.readonly",
 ];
 
 export const googleConfigured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
