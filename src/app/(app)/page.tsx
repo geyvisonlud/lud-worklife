@@ -68,12 +68,6 @@ export default async function TodayPage() {
         </Link>
       </header>
 
-      <DailyInspiration
-        stoicIndex={STOIC_QUOTES.indexOf(stoic)}
-        verseIndex={VERSES.indexOf(verse)}
-        saved={saved.map((s) => `${s.kind}:${s.key}`)}
-      />
-
       <StatStrip
         items={[
           { label: "Tasks today", value: String(sum.dueToday), hint: sum.inbox ? `${sum.inbox} in the inbox` : "Inbox zero" },
@@ -193,6 +187,12 @@ export default async function TodayPage() {
           )}
         </Card>
       </div>
+
+      <DailyInspiration
+        stoicIndex={STOIC_QUOTES.indexOf(stoic)}
+        verseIndex={VERSES.indexOf(verse)}
+        saved={saved.map((s) => `${s.kind}:${s.key}`)}
+      />
     </div>
   );
 }

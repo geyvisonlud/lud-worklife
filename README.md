@@ -18,7 +18,7 @@ calendars**:
   "Approve the Q1 budget", "Confirmar presença no ensaio de sábado" — with a due date when the email gives one. **Add task**
   turns it into a task with a link back to the thread; **×** dismisses it.
 
-- **Daily stoic thought and Bible verse** at the top of Today (Marcus Aurelius, Seneca, Epictetus; verses on strength
+- **Daily stoic thought and Bible verse** at the bottom of Today (Marcus Aurelius, Seneca, Epictetus; verses on strength
   and focus from the KJV). Same pick all day on every device, a new one tomorrow; **shuffle** shows another, **♥** keeps it
   in **Saved** (`/saved`, filter by stoic or verses, copy or remove).
 
