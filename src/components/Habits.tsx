@@ -106,45 +106,6 @@ function ProgressRing({ done, total, size = 22 }: { done: number; total: number;
   );
 }
 
-/** Home: today's habits, first thing on the page. */
-export function HabitsToday({ habits }: { habits: HabitSummary[] }) {
-  const { list, toggle } = useHabitList(habits);
-  const done = list.filter((h) => h.doneToday).length;
-  return (
-    <section className="card animate-in">
-      <div className="card-head flex items-center justify-between gap-3">
-        <h2 className="label-mono inline-flex items-center gap-2">
-          <Link href="/habits" className="hover:text-ink">
-            Habits today ›
-          </Link>
-        </h2>
-        {list.length > 0 && (
-          <span className="num inline-flex items-center gap-2 text-[12.5px] text-ink-2">
-            <ProgressRing done={done} total={list.length} />
-            {done === list.length ? "All done 🎉" : `${done} of ${list.length}`}
-          </span>
-        )}
-      </div>
-      {list.length ? (
-        <ul className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3 [&>li]:!border-t-0 [&>li]:border-b [&>li]:border-hairline">
-          {list.map((h) => (
-            <HabitRow key={h.id} h={h} onToggle={() => toggle(h.id)} />
-          ))}
-        </ul>
-      ) : (
-        <div className="py-4 text-center text-[14px] text-ink-2">
-          Build the habits you want — tick them here every day and watch the streaks grow.
-          <div className="mt-3">
-            <Link href="/habits" className="btn btn-secondary">
-              <Plus size={14} /> Add a habit
-            </Link>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
 const DOCK_KEY = "lw:habit-dock";
 
 /** Floating checklist on every other page. Minimized state is remembered on this device. */
@@ -428,3 +389,71 @@ export function RestoreHabit({ id }: { id: string }) {
   );
 }
 
+
+/** Today: the day's habits as one compact row of tappable pills. */
+export function HabitStrip({ habits }: { habits: HabitSummary[] }) {
+  const { list, toggle } = useHabitList(habits);
+  const done = list.filter((h) => h.doneToday).length;
+  if (!list.length) {
+    return (
+      <section className="card animate-in flex flex-wrap items-center gap-3 !py-3">
+        <span className="label-mono">Habits</span>
+        <span className="flex-1 text-[13.5px] text-ink-2">Track the habits you want to build — they'll show up here every day.</span>
+        <Link href="/habits" className="btn btn-secondary">
+          <Plus size={14} /> Add a habit
+        </Link>
+      </section>
+    );
+  }
+  return (
+    <section className="card animate-in flex flex-col items-start gap-x-4 gap-y-2.5 !py-3 sm:flex-row sm:items-center">
+      <Link href="/habits" className="inline-flex items-center gap-2 pr-1 hover:text-ink" aria-label={`Habits: ${done} of ${list.length} done`}>
+        <ProgressRing done={done} total={list.length} />
+        <span className="label-mono">Habits</span>
+        <span className="num text-[12.5px] text-ink-2">
+          {done}/{list.length}
+        </span>
+      </Link>
+      <ul className="flex flex-1 flex-wrap gap-2">
+        {list.map((h) => {
+          const c = projectColor(h.color).hex;
+          return (
+            <li key={h.id}>
+              <button
+                role="checkbox"
+                aria-checked={h.doneToday}
+                onClick={() => toggle(h.id)}
+                className="inline-flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-[13px] transition-colors"
+                style={{
+                  borderColor: h.doneToday ? "transparent" : "var(--hairline-strong)",
+                  background: h.doneToday ? `color-mix(in srgb, ${c} 14%, var(--surface))` : "var(--surface)",
+                }}
+              >
+                <span
+                  className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
+                  style={{ background: h.doneToday ? c : "transparent", boxShadow: h.doneToday ? "none" : `inset 0 0 0 1.6px color-mix(in srgb, ${c} 70%, transparent)` }}
+                  aria-hidden
+                >
+                  {h.doneToday ? (
+                    <svg viewBox="0 0 16 16" width="12" height="12">
+                      <path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <span className="text-[12px] leading-none">{h.emoji ?? ""}</span>
+                  )}
+                </span>
+                <span className={h.doneToday ? "text-ink-2" : ""}>{h.name}</span>
+                {h.streak > 0 && (
+                  <span className="num inline-flex items-center gap-0.5 text-[11.5px] text-warn">
+                    <Flame size={11} />
+                    {h.streak}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
