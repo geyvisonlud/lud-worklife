@@ -1,5 +1,6 @@
 import { Sidebar, TabBar } from "@/components/Nav";
 import { WorkProvider } from "@/components/TaskSheet";
+import { Main } from "@/components/Main";
 import { authEnabled } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { appTimeZone, relativeTime } from "@/lib/dates";
@@ -28,7 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <WorkProvider tz={appTimeZone()} today={day} projects={projects} defaultDuration={settings.defaultDuration} googleTarget={target?.name ?? null}>
       <Sidebar badges={{ "/tasks": overdue }} authEnabled={authEnabled()} sync={sync} />
       <TabBar badges={{ "/tasks": overdue }} />
-      <main className="mx-auto max-w-[1360px] px-4 pb-28 pt-5 md:pb-12 md:pl-64 md:pr-8 md:pt-8">{children}</main>
+      <Main>{children}</Main>
     </WorkProvider>
   );
 }
