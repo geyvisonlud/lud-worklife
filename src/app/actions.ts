@@ -16,8 +16,7 @@ import { SETTING_KEYS, setSetting } from "@/lib/settings";
 import { gmailLink, taskNotesFromEmail } from "@/lib/email";
 import { scanAllEmail } from "@/lib/email-sync";
 import { findQuote, isQuoteKind } from "@/lib/daily";
-import { PLAN_DAYS, readingFor } from "@/lib/bible-plan";
-import { notesConfigured, notesFor } from "@/lib/bible-notes";
+import { PLAN_DAYS } from "@/lib/bible-plan";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -390,12 +389,6 @@ export async function setBibleDayRead(day: number, read: boolean): Promise<Actio
   if (read) await prisma.bibleDay.upsert({ where: { day }, create: { day }, update: {} });
   else await prisma.bibleDay.deleteMany({ where: { day } });
   return done();
-}
-
-/** Study notes for a plan day (written by Claude the first time, then kept). */
-export async function loadBibleNotes(day: number) {
-  if (!Number.isInteger(day) || day < 1 || day > PLAN_DAYS) return { configured: notesConfigured(), chapters: [] };
-  return { configured: notesConfigured(), chapters: await notesFor(readingFor(day).chapters) };
 }
 
 /* ------------------------------------------------------- saved quotes */

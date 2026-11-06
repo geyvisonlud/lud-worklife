@@ -73,12 +73,6 @@ export function passageLabel(p: Passage) {
   return p.from === p.to ? `${name} ${p.from}` : `${name} ${p.from}–${p.to}`;
 }
 
-/** NIV on BibleGateway (the NIV text is copyrighted, so it's read there rather than copied here). */
-export function nivUrl(passages: Passage[]) {
-  const q = passages.map((p) => (p.from === p.to ? `${p.book} ${p.from}` : `${p.book} ${p.from}-${p.to}`)).join("; ");
-  return `https://www.biblegateway.com/passage/?search=${encodeURIComponent(q)}&version=NIV`;
-}
-
 /** Plan day for a calendar day (1 on the start date). After day 365 the plan starts over. */
 export function planDay(start: string, today: string) {
   const elapsed = daysBetween(start, today);

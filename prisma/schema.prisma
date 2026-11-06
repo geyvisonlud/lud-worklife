@@ -277,15 +277,3 @@ model BibleDay {
   readAt DateTime @default(now())
 }
 
-/// Study notes for one chapter, written by Claude once and kept (see lib/bible-notes.ts).
-model BibleNote {
-  id        String   @id @default(cuid())
-  book      String
-  chapter   Int
-  /// ChapterNote JSON: summary, context, themes, key verses, cross-references, reflection.
-  content   Json
-  model     String
-  createdAt DateTime @default(now())
-
-  @@unique([book, chapter])
-}

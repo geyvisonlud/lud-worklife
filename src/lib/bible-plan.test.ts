@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BOOKS } from "./bible-books";
-import { PLAN_DAYS, TRACKS, dateOfDay, interleave, nextUnread, nivUrl, passageLabel, planDay, progress, readingFor, sliceForDay, toPassages } from "./bible-plan";
+import { PLAN_DAYS, TRACKS, dateOfDay, interleave, nextUnread, passageLabel, planDay, progress, readingFor, sliceForDay, toPassages } from "./bible-plan";
 
 describe("books", () => {
   it("has the 66 books with the right chapter counts", () => {
@@ -46,14 +46,11 @@ describe("plan", () => {
       { book: "1 Samuel", from: 1, to: 2 },
     ]);
   });
-  it("labels and NIV links", () => {
+  it("labels", () => {
     expect(passageLabel({ book: "Genesis", from: 1, to: 3 })).toBe("Genesis 1–3");
     expect(passageLabel({ book: "Psalms", from: 23, to: 23 })).toBe("Psalm 23");
     expect(passageLabel({ book: "Psalms", from: 1, to: 2 })).toBe("Psalms 1–2");
     expect(passageLabel({ book: "Jude", from: 1, to: 1 })).toBe("Jude");
-    const u = new URL(nivUrl([{ book: "Genesis", from: 1, to: 2 }, { book: "Matthew", from: 1, to: 1 }]));
-    expect(u.searchParams.get("search")).toBe("Genesis 1-2; Matthew 1");
-    expect(u.searchParams.get("version")).toBe("NIV");
   });
 });
 

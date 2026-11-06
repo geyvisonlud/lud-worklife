@@ -52,10 +52,9 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).
   `HabitDock` (floating, all pages except Today and /habits) remembers minimized/open in localStorage (`lw:habit-dock`).
-- Bible plan: `lib/bible-books.ts` (66 books, chapter counts, original intros), `lib/bible-plan.ts` (pure, tested: two tracks,
-  even split over 365 days, start date in Setting `biblePlanStart`, read days in `BibleDay`). Never store or display NIV text
-  (copyrighted) — link to BibleGateway with `nivUrl`. Chapter notes: `lib/bible-notes.ts` (Claude, structured output, cached in
-  `BibleNote`, prepared by the cron for today and tomorrow).
+- Bible plan: a reading guide only (the owner reads a physical Bible) — `lib/bible-books.ts` (66 books, chapter counts, original
+  intros), `lib/bible-plan.ts` (pure, tested: two tracks, even split over 365 days, start date in Setting `biblePlanStart`, read
+  days in `BibleDay`). No Bible text, no study notes and no Claude calls here.
 - Daily thought/verse: content in `lib/daily-content.ts` (stable ids — saved quotes point to them; append, never renumber),
   pick in `lib/daily.ts` (fixed per day, coprime stride so no repeats within a cycle). Saving copies the text into `SavedQuote`.
 - Database URL: `lib/db.ts` and `scripts/db-env.mjs` accept the names Vercel's Neon integration adds (`POSTGRES_URL`, …).

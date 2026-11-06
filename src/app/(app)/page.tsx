@@ -5,7 +5,6 @@ import { EmailSuggestions } from "@/components/EmailSuggestions";
 import { DailyInspiration } from "@/components/DailyInspiration";
 import { HabitsToday } from "@/components/Habits";
 import { BibleTodayBox } from "@/components/Bible";
-import { nivUrl } from "@/lib/bible-plan";
 import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
 import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
@@ -80,7 +79,6 @@ export default async function TodayPage() {
           day={bible.current}
           ot={bible.reading.ot}
           nt={bible.reading.nt}
-          url={nivUrl([...bible.reading.ot, ...bible.reading.nt])}
           read={bible.done.has(bible.current)}
           behind={bible.progress.behind}
           pct={bible.progress.pct}

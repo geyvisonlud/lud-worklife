@@ -22,12 +22,10 @@ calendars**:
   checklist; on every other page it floats in the corner and can be minimized. **Habits** shows each one's streak, best
   streak, last-30-days rate and heatmap; each habit has its own evolution page (12-month heatmap where you can tick a day
   you forgot, week-by-week bars). Archive keeps the history; delete removes it.
-- **Bible in a year (NIV):** all 1,189 chapters in 365 days — an Old Testament reading plus the New Testament with the
-  Psalms woven in (about three chapters a day). Today shows the day's passages with **Read in NIV** (BibleGateway — the NIV
-  text is copyrighted, so it isn't copied into the app), **Study notes** and **Mark as read**. The **Bible** page puts each
-  day's passages and book introductions beside study notes for every chapter (summary, context, outline, key verses,
-  cross-references and a thought for the day) written by Claude the first time a chapter is opened and kept after that;
-  the scheduled sync prepares today's and tomorrow's ahead of time. A year map shows days read and days to catch up.
+- **Bible in a year:** a reading guide for your own Bible — all 1,189 chapters in 365 days, an Old Testament reading plus
+  the New Testament with the Psalms woven in (about three chapters a day). Today shows the day's passages and **Mark as
+  read**; the **Bible** page shows the day with a short intro to each book, a year map (read / today / to catch up) and the
+  whole plan day by day by month, where any day can be ticked. Start the plan on any date; nothing here uses the Claude API.
 - **Daily stoic thought and Bible verse** at the bottom of Today (Marcus Aurelius, Seneca, Epictetus; verses on strength
   and focus from the KJV). Same pick all day on every device, a new one tomorrow; **shuffle** shows another, **♥** keeps it
   in **Saved** (`/saved`, filter by stoic or verses, copy or remove).
@@ -44,7 +42,7 @@ calendars**:
 | **Projects** | Kanban of projects by stage, with progress, target date and where it came from in Notion |
 | **Project** | Cover, progress, the project's task board, and the **Notion page** tab |
 | **Habits** | Your habits with streaks, 30-day rate and heatmaps; add, edit, archive or delete; each opens its own evolution page |
-| **Bible** | Bible-in-a-year plan (NIV): today's passages, book intros and chapter study notes side by side, year map, catch-up |
+| **Bible** | Bible-in-a-year reading guide: the day's passages and book intros, year map, the whole plan by month, catch-up |
 | **Saved** | The stoic thoughts and verses you hearted on Today |
 | **Connections** | Google accounts and their calendars (visibility, color), Notion workspaces, and scheduling preferences |
 
