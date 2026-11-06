@@ -65,7 +65,7 @@ export function DayOverview({
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 px-[var(--pad-x)]">
         <div className="min-w-0">
           <div className="label-mono mb-2">{dateLabel}</div>
-          <h1 className="display text-[38px] leading-[1.02] md:text-[48px]">{greeting}</h1>
+          <h1 className="text-[30px] font-semibold leading-[1.08] tracking-[-0.035em] md:text-[40px]">{greeting}</h1>
           <p className="mt-2 text-[14px] text-ink-2">
             {current ? (
               <>

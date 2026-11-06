@@ -49,7 +49,7 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   (Claude `claude-opus-5-5`, structured output, emails passed as data in `<email>` tags), `lib/email-sync.ts` (Gmail, read-only).
   Every analyzed email is stored in `EmailSuggestion` (pending/accepted/dismissed/none/skipped) so it's never analyzed twice.
   Keep marketing filtering in `screen` (cheap, tested) rather than in the prompt.
-- Today: `DayOverview` comes first (greeting, now/next, the day ribbon — today's events in calendar colors and hatched focus
+- Today: `DayOverview` comes first (greeting in Geist sans (no serif on Today), now/next, the day ribbon — today's events in calendar colors and hatched focus
   blocks on one line with a now marker — and the day's figures; math in `lib/day-overview.ts`, tested), then `HabitStrip`, then
   two independent columns (Agenda + email | To do + Bible; on phones agenda, to do, email, Bible), projects + Notion, quotes.
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
