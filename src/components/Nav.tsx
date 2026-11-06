@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CheckCircle2, Heart, KanbanSquare, LogOut, PlugZap, Sun } from "lucide-react";
+import { CalendarDays, CheckCircle2, Heart, KanbanSquare, LogOut, PlugZap, Repeat, Sun } from "lucide-react";
 import { logout } from "@/app/actions";
 
 const ITEMS = [
   { href: "/", label: "Today", icon: Sun, group: "Plan" },
   { href: "/tasks", label: "Tasks", icon: CheckCircle2, group: "Plan" },
   { href: "/calendar", label: "Calendar", icon: CalendarDays, group: "Plan" },
+  { href: "/habits", label: "Habits", icon: Repeat, group: "Plan", desktopOnly: true },
   { href: "/projects", label: "Projects", icon: KanbanSquare, group: "Work" },
   { href: "/saved", label: "Saved", icon: Heart, group: "Work", desktopOnly: true },
   { href: "/connections", label: "Connections", icon: PlugZap, group: "Settings" },

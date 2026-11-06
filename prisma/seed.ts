@@ -27,6 +27,7 @@ async function main() {
     prisma.notionConnection.deleteMany(),
     prisma.syncRun.deleteMany(),
     prisma.setting.deleteMany(),
+    prisma.habit.deleteMany(),
   ]);
 
   /* ------------------------------------------------------------ calendars */
@@ -227,6 +228,27 @@ async function main() {
   await t({ title: "Read “Shape Up” ch. 4", durationMin: 30 });
   await t({ title: "Expense report for October", priority: 2, dueDate: addDays(today, -1), durationMin: 30 });
   await t({ title: "Back up photos", status: "done", completedAt: doneAt });
+
+  /* ---------------------------------------------------------------- habits */
+  // Deterministic "random" history so screenshots are stable.
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const habit = async (name: string, emoji: string, color: string, targetPerWeek: number, daysBack: number, p: number, streak: number, position: number) => {
+    const h = await prisma.habit.create({ data: { name, emoji, color, targetPerWeek, position, createdAt: new Date(`${addDays(today, -daysBack)}T12:00:00Z`) } });
+    const days: string[] = [];
+    for (let i = 1; i <= daysBack; i++) {
+      const d = addDays(today, -i);
+      if (i <= streak || rnd() < p) days.push(d);
+    }
+    await prisma.habitCheck.createMany({ data: days.map((day) => ({ habitId: h.id, day })) });
+    return h;
+  };
+  const water = await habit("Drink 2L of water", "💧", "teal", 7, 120, 0.8, 12, 1);
+  await habit("Read 20 minutes", "📖", "violet", 7, 200, 0.65, 4, 2);
+  const prayer = await habit("Morning prayer", "🙏", "amber", 7, 300, 0.85, 26, 3);
+  await habit("Gym", "💪", "orange", 3, 150, 0.42, 0, 4);
+  await habit("English practice", "🇺🇸", "blue", 5, 60, 0.6, 2, 5);
+  await prisma.habitCheck.createMany({ data: [water, prayer].map((h) => ({ habitId: h.id, day: today })) });
 
   await prisma.setting.create({ data: { key: "taskCalendarId", value: "" } });
   console.log(`Seeded ${events.length} events, 7 projects and tasks for the week of ${week} (${tz}).`);

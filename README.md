@@ -18,6 +18,10 @@ calendars**:
   "Approve the Q1 budget", "Confirmar presença no ensaio de sábado" — with a due date when the email gives one. **Add task**
   turns it into a task with a link back to the thread; **×** dismisses it.
 
+- **Habits:** add the habits you want to build, each with a goal (every day, or N× a week). Today opens with the day's
+  checklist; on every other page it floats in the corner and can be minimized. **Habits** shows each one's streak, best
+  streak, last-30-days rate and heatmap; each habit has its own evolution page (12-month heatmap where you can tick a day
+  you forgot, week-by-week bars). Archive keeps the history; delete removes it.
 - **Daily stoic thought and Bible verse** at the bottom of Today (Marcus Aurelius, Seneca, Epictetus; verses on strength
   and focus from the KJV). Same pick all day on every device, a new one tomorrow; **shuffle** shows another, **♥** keeps it
   in **Saved** (`/saved`, filter by stoic or verses, copy or remove).
@@ -33,6 +37,7 @@ calendars**:
 | **Calendar** | Day / 3-day / week grid. Unscheduled tasks on the side — drag them in. Due-but-unscheduled tasks appear in the all-day row. Click an empty slot to create a task there; click an event for details, Meet link and "Open in Google Calendar". Show/hide each calendar |
 | **Projects** | Kanban of projects by stage, with progress, target date and where it came from in Notion |
 | **Project** | Cover, progress, the project's task board, and the **Notion page** tab |
+| **Habits** | Your habits with streaks, 30-day rate and heatmaps; add, edit, archive or delete; each opens its own evolution page |
 | **Saved** | The stoic thoughts and verses you hearted on Today |
 | **Connections** | Google accounts and their calendars (visibility, color), Notion workspaces, and scheduling preferences |
 

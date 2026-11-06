@@ -2,6 +2,8 @@ import type { Calendar, CalendarAccount, Event, Prisma, Project, Task } from "@p
 import { prisma } from "./db";
 import { addDays, appTimeZone, dayBounds, ymdInTz } from "./dates";
 import type { SimpleBlock } from "./notion";
+import { summarize } from "./habits";
+import { getSettings } from "./settings";
 
 /* ----------------------------------------------------------- client DTOs */
 
@@ -176,3 +178,19 @@ export async function lastSyncs() {
 }
 
 export const notionContent = (p: Pick<Project, "notionContent">) => (Array.isArray(p.notionContent) ? (p.notionContent as unknown as SimpleBlock[]) : []);
+
+/* ---------------------------------------------------------------- habits */
+
+/** Today's checklist: active habits with done/streak/this-week. */
+export async function habitsToday() {
+  const day = today();
+  const { weekStart } = await getSettings();
+  // ~13 months of history covers any realistic current streak (the habit pages load everything).
+  const since = addDays(day, -400);
+  const habits = await prisma.habit.findMany({
+    where: { archived: false },
+    include: { checks: { where: { day: { gte: since } }, select: { day: true } } },
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+  });
+  return habits.map((h) => summarize(h, new Set(h.checks.map((c) => c.day)), day, weekStart));
+}

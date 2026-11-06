@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { Agenda } from "@/components/Agenda";
 import { EmailSuggestions } from "@/components/EmailSuggestions";
 import { DailyInspiration } from "@/components/DailyInspiration";
+import { HabitsToday } from "@/components/Habits";
 import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
 import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
@@ -11,7 +12,7 @@ import { Card, NotionMark, ProgressBar, ProjectGlyph, StatStrip, notionReasonLab
 import { projectColor } from "@/lib/colors";
 import { prisma } from "@/lib/db";
 import { addDays, appTimeZone, dayBounds, formatDay, formatDuration, greeting, relativeTime } from "@/lib/dates";
-import { eventsBetween, listProjects, listTasks, today } from "@/lib/data";
+import { eventsBetween, habitsToday, listProjects, listTasks, today } from "@/lib/data";
 import { ownerFirstName } from "@/lib/session";
 import { daySummary, groupTasks } from "@/lib/tasks";
 
@@ -30,6 +31,7 @@ export default async function TodayPage() {
     prisma.emailSuggestion.findMany({ where: { status: "pending", account: { emailEnabled: true } }, include: { account: { select: { email: true } } }, orderBy: [{ priority: "desc" }, { receivedAt: "desc" }], take: 12 }),
     prisma.calendarAccount.findMany({ select: { provider: true, scopes: true, emailEnabled: true, lastEmailScanAt: true } }),
   ]);
+  const habits = await habitsToday();
   const saved = await prisma.savedQuote.findMany({ select: { kind: true, key: true } });
   const stoic = stoicOfDay(day);
   const verse = verseOfDay(day);
@@ -67,6 +69,8 @@ export default async function TodayPage() {
           Plan the week <ArrowRight size={14} />
         </Link>
       </header>
+
+      <HabitsToday habits={habits} />
 
       <StatStrip
         items={[

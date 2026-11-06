@@ -235,3 +235,34 @@ model SavedQuote {
 
   @@unique([kind, key])
 }
+
+/// ---------------------------------------------------------------------------
+/// Habits — a checklist for today, streaks and history
+/// ---------------------------------------------------------------------------
+
+model Habit {
+  id            String       @id @default(cuid())
+  name          String
+  emoji         String?
+  /// Palette key from lib/colors.ts (PROJECT_COLORS).
+  color         String       @default("green")
+  /// Goal: days per week (7 = every day).
+  targetPerWeek Int          @default(7)
+  position      Float        @default(0)
+  /// Archived habits leave the checklist but keep their history.
+  archived      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  checks        HabitCheck[]
+}
+
+/// One day a habit was done (YYYY-MM-DD in APP_TIMEZONE).
+model HabitCheck {
+  id        String   @id @default(cuid())
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  day       String
+  createdAt DateTime @default(now())
+
+  @@unique([habitId, day])
+  @@index([day])
+}

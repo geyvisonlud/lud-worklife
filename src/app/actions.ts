@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, SESSION_MAX_AGE, allowedEmails, createSessionToken, passwordOk, verifySessionToken } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { isHex, isProjectColor } from "@/lib/colors";
-import { isYmd } from "@/lib/dates";
+import { appTimeZone, isYmd, ymdInTz } from "@/lib/dates";
 import { isProjectStage, isTaskStatus, positionAt } from "@/lib/kanban";
 import { mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
 import { findUserByEmail, notionApi } from "@/lib/notion";
@@ -325,6 +325,51 @@ export async function scanEmailIfStale() {
 export async function setEmailEnabled(accountId: string, enabled: boolean) {
   await prisma.calendarAccount.update({ where: { id: accountId }, data: { emailEnabled: enabled } });
   if (!enabled) await prisma.emailSuggestion.updateMany({ where: { accountId, status: "pending" }, data: { status: "dismissed" } });
+  return done();
+}
+
+/* ---------------------------------------------------------------- habits */
+
+export type HabitInput = { name?: string; emoji?: string | null; color?: string; targetPerWeek?: number };
+
+function habitData(input: HabitInput) {
+  const data: Record<string, unknown> = {};
+  if (input.name !== undefined) data.name = clean(input.name, 120) || "New habit";
+  if (input.emoji !== undefined) data.emoji = clean(input.emoji, 8) || null;
+  if (input.color !== undefined && isProjectColor(input.color)) data.color = input.color;
+  if (input.targetPerWeek !== undefined) data.targetPerWeek = Math.max(1, Math.min(7, Math.round(Number(input.targetPerWeek) || 7)));
+  return data;
+}
+
+export async function createHabit(input: HabitInput): Promise<ActionResult> {
+  if (!clean(input.name)) return fail("Give the habit a name.");
+  const last = await prisma.habit.findFirst({ orderBy: { position: "desc" } });
+  await prisma.habit.create({ data: { name: "", ...habitData(input), position: (last?.position ?? 0) + 1024 } as never });
+  return done("Habit added");
+}
+
+export async function updateHabit(id: string, input: HabitInput): Promise<ActionResult> {
+  await prisma.habit.update({ where: { id }, data: habitData(input) });
+  return done();
+}
+
+/** Archive keeps the history; the habit leaves the daily checklist. */
+export async function setHabitArchived(id: string, archived: boolean): Promise<ActionResult> {
+  await prisma.habit.update({ where: { id }, data: { archived } });
+  return done(archived ? "Archived — its history is kept" : "Back on your list");
+}
+
+export async function deleteHabit(id: string): Promise<ActionResult> {
+  await prisma.habit.deleteMany({ where: { id } });
+  return done("Habit deleted");
+}
+
+/** Tick or untick a day (today, or a past day you forgot). Future days can't be ticked. */
+export async function setHabitDone(habitId: string, day: string, isDone: boolean): Promise<ActionResult> {
+  if (!isYmd(day)) return fail("Invalid day.");
+  if (day > ymdInTz(new Date(), appTimeZone())) return fail("That day hasn't happened yet.");
+  if (isDone) await prisma.habitCheck.upsert({ where: { habitId_day: { habitId, day } }, create: { habitId, day }, update: {} });
+  else await prisma.habitCheck.deleteMany({ where: { habitId, day } });
   return done();
 }
 
