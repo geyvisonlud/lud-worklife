@@ -7,7 +7,7 @@ import { formatDuration, minutesInTz, ymdInTz, zonedToUtc } from "@/lib/dates";
 import { PRIORITIES, TASK_STATUSES } from "@/lib/kanban";
 import type { TaskDTO } from "@/lib/data";
 import { Field, Sheet } from "./Sheet";
-import { NotionMark } from "./ui";
+import { GoogleMark, NotionMark } from "./ui";
 
 export type ProjectOption = { id: string; name: string; emoji: string | null; color: string };
 
@@ -214,6 +214,12 @@ function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: 
       {task?.fromNotion && (
         <p className="flex items-center gap-1.5 text-[12px] text-ink-2">
           <NotionMark size={13} /> Imported from a Notion to-do that mentions you. Checking it off in Notion marks it done here.
+        </p>
+      )}
+
+      {task?.fromGoogleTasks && (
+        <p className="flex items-center gap-1.5 text-[12px] text-ink-2">
+          <GoogleMark size={13} /> Synced with Google Tasks — title, notes, due date and done go both ways. Priority, project and time blocks stay here.
         </p>
       )}
 

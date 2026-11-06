@@ -32,9 +32,29 @@ model CalendarAccount {
   /// Read this account's inbox for possible tasks.
   emailEnabled    Boolean           @default(true)
   lastEmailScanAt DateTime?
+  /// Last Google Tasks sync of this account, and its error (separate from the calendar's).
+  tasksSyncedAt   DateTime?
+  tasksError      String?
   createdAt       DateTime          @default(now())
   calendars       Calendar[]
   emails          EmailSuggestion[]
+  taskLists       GoogleTaskList[]
+}
+
+/// A Google Tasks list; its tasks are mirrored both ways with Task rows.
+model GoogleTaskList {
+  id           String          @id @default(cuid())
+  accountId    String
+  account      CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  externalId   String
+  title        String
+  /// Import this list's tasks (and keep them in sync).
+  enabled      Boolean         @default(true)
+  /// Changes since this instant are fetched on the next sync (null = first sync: open tasks only).
+  lastSyncedAt DateTime?
+  tasks        Task[]
+
+  @@unique([accountId, externalId])
 }
 
 model Calendar {
@@ -136,11 +156,18 @@ model Task {
   googleCalendarId String?
   /// to_do block this task came from (Notion import).
   notionBlockId    String?   @unique
+  /// Google Tasks mirror (two-way): the task's id in Google and its list.
+  googleTaskId     String?
+  googleTaskListId String?
+  googleTaskList   GoogleTaskList? @relation(fields: [googleTaskListId], references: [id], onDelete: SetNull)
+  /// Google's `updated` for the version we last saw or wrote — newer ones are pulled in.
+  googleTaskUpdated DateTime?
   completedAt      DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@index([scheduledStart])
+  @@unique([googleTaskListId, googleTaskId])
 }
 
 /// ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import Link from "next/link";
 import { Agenda } from "@/components/Agenda";
 import { EmailSuggestions } from "@/components/EmailSuggestions";
@@ -112,6 +113,7 @@ export default async function TodayPage() {
       />
 
       <HabitStrip habits={habits} />
+      <GoogleTasksAutoSync />
 
       {/* Two independent columns on desktop (no gaps under the shorter card); on phones: agenda, to do, email, Bible. */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start">

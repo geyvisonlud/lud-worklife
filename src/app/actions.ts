@@ -10,6 +10,7 @@ import { isHex, isProjectColor } from "@/lib/colors";
 import { appTimeZone, isYmd, ymdInTz } from "@/lib/dates";
 import { isProjectStage, isTaskStatus, positionAt } from "@/lib/kanban";
 import { mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
+import { deleteGoogleTask, pushGoogleTask, syncAllTaskLists, syncTaskLists, unlinkLists } from "@/lib/google-tasks-sync";
 import { findUserByEmail, notionApi } from "@/lib/notion";
 import { syncAllNotion, syncNotionConnection } from "@/lib/notion-sync";
 import { SETTING_KEYS, setSetting } from "@/lib/settings";
@@ -94,7 +95,10 @@ export async function updateTask(id: string, input: TaskInput): Promise<ActionRe
   const timeChanged =
     before.scheduledStart?.getTime() !== after.scheduledStart?.getTime() || before.durationMin !== after.durationMin || before.title !== after.title || before.notes !== after.notes;
   const warn = timeChanged && (after.scheduledStart || before.googleEventId) ? await mirrorTask(id) : null;
-  return done(warn);
+  const inTasks =
+    after.googleTaskId && (before.title !== after.title || before.notes !== after.notes || before.dueDate !== after.dueDate || (before.status === "done") !== (after.status === "done"));
+  const warnTasks = inTasks ? await pushGoogleTask(id) : null;
+  return done(warn ?? warnTasks);
 }
 
 export async function toggleTask(id: string, isDone: boolean) {
@@ -123,11 +127,13 @@ export async function moveTask(id: string, status: string, index: number, projec
     where: { id },
     data: { status, position: positionAt(column, index), ...(status !== t.status ? { completedAt: status === "done" ? new Date() : null } : {}) },
   });
-  return done();
+  const warn = t.googleTaskId && (t.status === "done") !== (status === "done") ? await pushGoogleTask(id) : null;
+  return done(warn);
 }
 
 export async function deleteTask(id: string) {
-  const warn = await removeTaskEvent(id);
+  const warnTasks = await deleteGoogleTask(id);
+  const warn = (await removeTaskEvent(id)) ?? warnTasks;
   await prisma.task.deleteMany({ where: { id } });
   return done(warn);
 }
@@ -206,6 +212,9 @@ export async function disconnectCalendarAccount(id: string) {
   const cals = await prisma.calendar.findMany({ where: { accountId: id }, select: { id: true } });
   // Tasks mirrored into this account just lose the link (the Google events stay in Google).
   await prisma.task.updateMany({ where: { googleCalendarId: { in: cals.map((c) => c.id) } }, data: { googleEventId: null, googleCalendarId: null } });
+  // Tasks from its Google Tasks lists stay here, unlinked.
+  const lists = await prisma.googleTaskList.findMany({ where: { accountId: id }, select: { id: true } });
+  await unlinkLists(lists.map((l) => l.id));
   await prisma.calendarAccount.delete({ where: { id } });
   return done();
 }
@@ -223,6 +232,35 @@ export async function syncIfStale() {
   await syncAllCalendars();
   revalidatePath("/", "layout");
   return { synced: true };
+}
+
+/* ---------------------------------------------------------- Google Tasks */
+
+/** Turn a Google Tasks list on (imported and kept in sync) or off (its tasks stay here, unlinked). */
+export async function setTaskListEnabled(id: string, enabled: boolean): Promise<ActionResult> {
+  const list = await prisma.googleTaskList.update({ where: { id }, data: { enabled, lastSyncedAt: null } });
+  if (!enabled) {
+    await unlinkLists([id]);
+    return done();
+  }
+  try {
+    const r = await syncTaskLists(list.accountId);
+    revalidatePath("/", "layout");
+    return done(r.imported ? `${r.imported} task${r.imported === 1 ? "" : "s"} imported from ${list.title}` : undefined);
+  } catch (e) {
+    return fail((e as Error).message);
+  }
+}
+
+/** Called when Today or Tasks opens: pulls Google Tasks if the last pull is older than 3 minutes. */
+export async function syncGoogleTasksIfStale() {
+  const stale = await prisma.calendarAccount.findFirst({
+    where: { provider: "google", scopes: { contains: "auth/tasks" }, OR: [{ tasksSyncedAt: null }, { tasksSyncedAt: { lt: new Date(Date.now() - 3 * 60_000) } }] },
+  });
+  if (!stale) return { synced: false };
+  const r = await syncAllTaskLists();
+  if (r.imported || r.updated) revalidatePath("/", "layout");
+  return { synced: r.imported + r.updated > 0 };
 }
 
 /* ---------------------------------------------------------------- Notion */

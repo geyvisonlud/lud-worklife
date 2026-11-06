@@ -9,7 +9,7 @@ import type { TaskDTO } from "@/lib/data";
 import { parseQuickAdd } from "@/lib/tasks";
 import { dragState } from "./dragState";
 import { useReport, useWork } from "./TaskSheet";
-import { NotionMark } from "./ui";
+import { GoogleMark, NotionMark } from "./ui";
 
 export const PRIORITY_COLOR = ["var(--ink-3)", "var(--c1)", "var(--warn)", "var(--bad)"];
 
@@ -87,6 +87,12 @@ export function TaskMeta({ task, showProject = true }: { task: TaskDTO; showProj
       </span>,
     );
   if (task.fromNotion) bits.push(<NotionMark key="n" size={11} />);
+  if (task.fromGoogleTasks)
+    bits.push(
+      <span key="g" className="inline-flex items-center" title="Synced with Google Tasks">
+        <GoogleMark size={11} />
+      </span>,
+    );
   if (!bits.length) return null;
   return <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-ink-2">{bits}</div>;
 }

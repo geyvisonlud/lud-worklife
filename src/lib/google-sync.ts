@@ -15,6 +15,7 @@ import {
   type GoogleEvent,
 } from "./google";
 import { getSettings } from "./settings";
+import { friendlyGoogleError } from "./google-tasks";
 
 /** Events are kept for this window around today. */
 export const SYNC_PAST_DAYS = 21;
@@ -90,7 +91,7 @@ export async function syncAccount(accountId: string) {
     const auth = e instanceof GoogleAuthError;
     await prisma.calendarAccount.update({
       where: { id: accountId },
-      data: { status: auth ? "RECONNECT" : "ERROR", lastError: String((e as Error).message ?? e).slice(0, 300) },
+      data: { status: auth ? "RECONNECT" : "ERROR", lastError: friendlyGoogleError(String((e as Error).message ?? e)) },
     });
     throw e;
   }
@@ -110,6 +111,10 @@ export async function syncAllCalendars() {
       errors.push(`${a.email}: ${(e as Error).message}`);
     }
   }
+  // Google Tasks, per account, after the calendars (reuses the refreshed tokens).
+  const { syncAllTaskLists } = await import("./google-tasks-sync");
+  const tasks = await syncAllTaskLists().catch((e) => ({ errors: [String((e as Error).message)] }));
+  errors.push(...tasks.errors);
   await prisma.syncRun.update({
     where: { id: run.id },
     data: { status: errors.length ? "ERROR" : "SUCCESS", finishedAt: new Date(), imported: events, message: errors.join("; ") || null },

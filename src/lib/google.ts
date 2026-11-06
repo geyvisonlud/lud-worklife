@@ -19,6 +19,8 @@ export const CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   // Read-only: the inbox is scanned for possible tasks (Today → Possible tasks). Nothing is sent or changed.
   "https://www.googleapis.com/auth/gmail.readonly",
+  // Two-way: Google Tasks lists are mirrored with the tasks here.
+  "https://www.googleapis.com/auth/tasks",
 ];
 
 export const googleConfigured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -200,7 +202,8 @@ export async function refreshAccessToken(refreshToken: string) {
 }
 
 export async function googleApi<T>(token: string, path: string, init: { method?: string; body?: unknown; query?: Record<string, string> } = {}): Promise<T> {
-  const url = `${API}${path}${init.query ? `?${new URLSearchParams(init.query)}` : ""}`;
+  // Paths are Calendar API paths; full URLs reach other Google APIs (Tasks) with the same handling.
+  const url = `${path.startsWith("https://") ? path : `${API}${path}`}${init.query ? `?${new URLSearchParams(init.query)}` : ""}`;
   const res = await fetch(url, {
     method: init.method ?? "GET",
     headers: { Authorization: `Bearer ${token}`, ...(init.body ? { "Content-Type": "application/json" } : {}) },
@@ -210,7 +213,7 @@ export async function googleApi<T>(token: string, path: string, init: { method?:
   if (res.status === 204) return undefined as T;
   const json = await res.json().catch(() => ({}));
   if (res.status === 401) throw new GoogleAuthError("Google rejected the access token.");
-  if (!res.ok) throw new Error(json?.error?.message || `Google Calendar error ${res.status}`);
+  if (!res.ok) throw new Error(json?.error?.message || `Google error ${res.status}`);
   return json as T;
 }
 

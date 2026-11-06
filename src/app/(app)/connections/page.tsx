@@ -1,4 +1,4 @@
-import { EmailToggle, CalendarRow, DisconnectButton, NotionTokenForm, SyncButton } from "@/components/ConnectionBits";
+import { EmailToggle, TaskListToggle, CalendarRow, DisconnectButton, NotionTokenForm, SyncButton } from "@/components/ConnectionBits";
 import { Field } from "@/components/Sheet";
 import { Card, GoogleMark, NotionMark, PageHeader } from "@/components/ui";
 import { saveSettings } from "@/app/actions";
@@ -11,6 +11,7 @@ import { notionOAuthConfigured } from "@/lib/notion";
 import { getSettings } from "@/lib/settings";
 import { hasGmailScope } from "@/lib/email";
 import { aiConfigured } from "@/lib/email-ai";
+import { hasTasksScope } from "@/lib/google-tasks";
 
 const MESSAGES: Record<string, string> = {
   google_config: "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to connect Google calendars.",
@@ -27,7 +28,7 @@ const MESSAGES: Record<string, string> = {
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ error?: string; connected?: string }> }) {
   const sp = await searchParams;
   const [accounts, notion, settings, syncs] = await Promise.all([
-    prisma.calendarAccount.findMany({ include: { calendars: { orderBy: [{ primary: "desc" }, { name: "asc" }] } }, orderBy: { createdAt: "asc" } }),
+    prisma.calendarAccount.findMany({ include: { calendars: { orderBy: [{ primary: "desc" }, { name: "asc" }] }, taskLists: { orderBy: { title: "asc" } } }, orderBy: { createdAt: "asc" } }),
     prisma.notionConnection.findMany({ orderBy: { createdAt: "asc" } }),
     getSettings(),
     lastSyncs(),
@@ -38,14 +39,14 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <PageHeader eyebrow="Calendars · Notion · Scheduling" title="Connections" />
+      <PageHeader eyebrow="Calendars · Tasks · Notion · Scheduling" title="Connections" />
       {sp.error && <p className="card animate-in !py-3 text-[14px] text-bad">{MESSAGES[sp.error] ?? "Something went wrong."}</p>}
       {sp.connected && <p className="card animate-in !py-3 text-[14px] text-good">Connected {sp.connected}.</p>}
 
-      <Card title="Google Calendar" action={accounts.some((a) => a.provider === "google") ? <SyncButton kind="google" /> : null}>
+      <Card title="Google" action={accounts.some((a) => a.provider === "google") ? <SyncButton kind="google" /> : null}>
         <p className="mb-4 text-[13.5px] text-ink-2">
           Connect every Google account you use — personal, work, church. Each calendar keeps the color you gave it in Google. Events sync every few minutes while
-          the calendar is open, and on the scheduled sync. The inbox is read (never changed) to suggest possible tasks on Today{" "}
+          the calendar is open, and on the scheduled sync. Google Tasks lists sync both ways with your tasks. The inbox is read (never changed) to suggest possible tasks on Today{" "}
           {aiConfigured() ? "— Claude reads new emails and picks out what asks something of you." : "— set ANTHROPIC_API_KEY to let Claude read them; until then, simple rules catch clear requests."}
         </p>
         <div className="space-y-4">
@@ -72,7 +73,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
                           : a.lastSyncedAt
                             ? `Synced ${relativeTime(a.lastSyncedAt)}`
                             : "Not synced yet"}{" "}
-                    · {a.calendars.length} calendars
+                    · {a.calendars.length} calendar{a.calendars.length === 1 ? "" : "s"}
                   </div>
                 </div>
                 {a.status === "RECONNECT" && (
@@ -96,6 +97,33 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
                   </div>
                 )}
               </div>
+              {a.provider === "google" && (
+                <div className="border-b border-hairline py-2">
+                  {hasTasksScope(a.scopes) ? (
+                    <>
+                      <div className="text-[14px]">Google Tasks</div>
+                      <div className={`text-[11.5px] ${a.tasksError ? "text-bad" : "text-ink-3"}`}>
+                        {a.tasksError ??
+                          `Both ways — new tasks come in, and title, notes, due date and done sync back${a.tasksSyncedAt ? ` · checked ${relativeTime(a.tasksSyncedAt)}` : ""}`}
+                      </div>
+                      {a.taskLists.length > 0 && (
+                        <div className="mt-1.5 pl-0.5">
+                          {a.taskLists.map((l) => (
+                            <TaskListToggle key={l.id} id={l.id} title={l.title} enabled={l.enabled} />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[13px] text-ink-2">Google Tasks isn't connected for this account yet.</span>
+                      <a href={`/api/google/connect?hint=${encodeURIComponent(a.email)}`} className="btn btn-secondary shrink-0">
+                        Allow Google Tasks
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
               <ul>
                 {a.calendars.map((c) => (
                   <CalendarRow key={c.id} cal={calendarDTO({ ...c, account: a })} googleColor={c.color} overridden={Boolean(c.customColor)} />

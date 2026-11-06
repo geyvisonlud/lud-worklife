@@ -52,6 +52,10 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 - Today: `DayOverview` comes first (greeting in Geist sans (no serif on Today), now/next, the day ribbon — today's events in calendar colors and hatched focus
   blocks on one line with a now marker — and the day's figures; math in `lib/day-overview.ts`, tested), then `HabitStrip`, then
   two independent columns (Agenda + email | To do + Bible; on phones agenda, to do, email, Bible), projects + Notion, quotes.
+- Google Tasks: two-way (`lib/google-tasks.ts` pure + tested, `lib/google-tasks-sync.ts` I/O). Lists in `GoogleTaskList` (toggle per list on
+  Connections); open tasks are imported, then changes since `lastSyncedAt` (deletions too) are pulled. Edits here (title, notes, due date,
+  done) are pushed by the task actions; `Task.googleTaskUpdated` keeps our own writes from being pulled back. Google has no time,
+  priority or project — those stay local. Pulled with the calendar sync and by `GoogleTasksAutoSync` on Today/Tasks.
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).
   `HabitDock` (floating, all pages except Today and /habits) remembers minimized/open in localStorage (`lw:habit-dock`).

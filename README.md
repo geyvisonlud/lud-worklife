@@ -89,6 +89,16 @@ Scheduled tasks: in **Connections → Scheduling → Add scheduled tasks to**, p
 calendar then creates an event there (marked with the task id, so it isn't shown twice); moving, resizing, unscheduling or
 deleting the task updates the event.
 
+### Google Tasks (two-way)
+
+Enable the **Google Tasks API** in the same Google Cloud project. Connecting a Google account asks for Tasks access too
+(accounts connected earlier show **Allow Google Tasks** in Connections). Each list can be turned on or off there.
+
+- Open tasks of every enabled list are imported into Tasks (marked with the Google logo); new ones keep coming in.
+- Title, notes, due date and done/not done sync both ways; deleting on either side deletes on the other.
+- Google Tasks has no time, priority or project — those (and calendar time blocks) stay in Lud Worklife.
+- Pulled when Today or Tasks opens (at most every 3 minutes), on **Sync now**, and on the scheduled sync.
+
 ### Possible tasks from email (Gmail)
 
 Connecting a Google account also asks for **read-only Gmail** access (enable the **Gmail API** in the same Google Cloud

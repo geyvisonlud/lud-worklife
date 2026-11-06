@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { RefreshCw, Unplug } from "lucide-react";
-import { setEmailEnabled, connectNotionToken, disconnectCalendarAccount, disconnectNotion, setCalendarColor, setCalendarVisible, syncCalendarsNow, syncNotionNow, type ActionResult } from "@/app/actions";
+import { setEmailEnabled, setTaskListEnabled, syncGoogleTasksIfStale, connectNotionToken, disconnectCalendarAccount, disconnectNotion, setCalendarColor, setCalendarVisible, syncCalendarsNow, syncNotionNow, type ActionResult } from "@/app/actions";
 import { CALENDAR_SWATCHES } from "@/lib/colors";
 import type { CalendarDTO } from "@/lib/data";
 import { useReport } from "./TaskSheet";
@@ -155,4 +156,43 @@ export function EmailToggle({ accountId, enabled }: { accountId: string; enabled
       />
     </label>
   );
+}
+
+/** A Google Tasks list: on = its tasks are imported here and kept in sync both ways. */
+export function TaskListToggle({ id, title, enabled }: { id: string; title: string; enabled: boolean }) {
+  const report = useReport();
+  const [on, setOn] = useState(enabled);
+  const [pending, start] = useTransition();
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-4 py-1.5">
+      <span className="min-w-0 truncate text-[13.5px]">
+        {title}
+        {pending && <span className="ml-1.5 text-[11.5px] text-ink-3">syncing…</span>}
+      </span>
+      <input
+        type="checkbox"
+        className="switch"
+        checked={on}
+        aria-label={`Sync ${title}`}
+        onChange={() => {
+          const next = !on;
+          setOn(next);
+          start(async () => {
+            if (!report(await setTaskListEnabled(id, next))) setOn(!next);
+          });
+        }}
+      />
+    </label>
+  );
+}
+
+/** Pulls Google Tasks in the background when a page opens (at most every few minutes), then refreshes it. */
+export function GoogleTasksAutoSync() {
+  const router = useRouter();
+  useEffect(() => {
+    syncGoogleTasksIfStale()
+      .then((r) => r.synced && router.refresh())
+      .catch(() => {});
+  }, [router]);
+  return null;
 }

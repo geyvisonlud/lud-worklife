@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { calendarRedirectUri, exchangeCode, idTokenProfile } from "@/lib/google";
 import { syncAccount } from "@/lib/google-sync";
 import { scanAccount } from "@/lib/email-sync";
+import { syncTaskLists } from "@/lib/google-tasks-sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,6 +34,7 @@ export async function GET(req: Request) {
     };
     const account = await prisma.calendarAccount.upsert({ where: { email: profile.email }, create: { email: profile.email, ...data }, update: data });
     await syncAccount(account.id).catch((e) => console.error("first calendar sync", e));
+    await syncTaskLists(account.id).catch((e) => console.error("first Google Tasks sync", e));
     await scanAccount(account.id).catch((e) => console.error("first email scan", e));
     return back(`connected=${encodeURIComponent(profile.email)}`);
   } catch (e) {

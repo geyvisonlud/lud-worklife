@@ -20,6 +20,8 @@ export type TaskDTO = {
   durationMin: number;
   scheduledStart: string | null;
   fromNotion: boolean;
+  /** Linked to a Google Tasks task (two-way). */
+  fromGoogleTasks: boolean;
   inGoogle: boolean;
   completedAt: string | null;
 };
@@ -71,6 +73,7 @@ export const taskDTO = (t: Task): TaskDTO => ({
   durationMin: t.durationMin,
   scheduledStart: t.scheduledStart?.toISOString() ?? null,
   fromNotion: Boolean(t.notionBlockId),
+  fromGoogleTasks: Boolean(t.googleTaskId && t.googleTaskListId),
   inGoogle: Boolean(t.googleEventId),
   completedAt: t.completedAt?.toISOString() ?? null,
 });

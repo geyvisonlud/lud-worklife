@@ -1,3 +1,4 @@
+import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import Link from "next/link";
 import { KanbanSquare, List } from "lucide-react";
 import { TaskBoard } from "@/components/Kanban";
@@ -38,6 +39,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   return (
     <div>
       <OpenTask task={open} />
+      <GoogleTasksAutoSync />
       <PageHeader eyebrow={`${tasks.filter((t) => t.status !== "done").length} open`} title="Tasks">
         <div className="seg-sm" role="group" aria-label="View">
           <Link href={q({ view: undefined })} aria-pressed={view === "list"} className="inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px]" style={view === "list" ? { background: "var(--surface)", boxShadow: "0 1px 2px rgba(0,0,0,.08)" } : {}}>
