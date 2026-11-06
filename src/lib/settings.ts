@@ -8,6 +8,8 @@ export const SETTING_KEYS = {
   defaultDuration: "defaultDuration",
   /** First day of the week: "0" Sunday, "1" Monday. */
   weekStart: "weekStart",
+  /** First day (YYYY-MM-DD) of the Bible-in-a-year plan; empty = not started. */
+  biblePlanStart: "biblePlanStart",
 } as const;
 
 export async function getSetting(key: string, fallback = "") {

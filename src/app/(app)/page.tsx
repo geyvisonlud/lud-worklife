@@ -4,6 +4,8 @@ import { Agenda } from "@/components/Agenda";
 import { EmailSuggestions } from "@/components/EmailSuggestions";
 import { DailyInspiration } from "@/components/DailyInspiration";
 import { HabitsToday } from "@/components/Habits";
+import { BibleTodayBox } from "@/components/Bible";
+import { nivUrl } from "@/lib/bible-plan";
 import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
 import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
@@ -12,7 +14,7 @@ import { Card, NotionMark, ProgressBar, ProjectGlyph, StatStrip, notionReasonLab
 import { projectColor } from "@/lib/colors";
 import { prisma } from "@/lib/db";
 import { addDays, appTimeZone, dayBounds, formatDay, formatDuration, greeting, relativeTime } from "@/lib/dates";
-import { eventsBetween, habitsToday, listProjects, listTasks, today } from "@/lib/data";
+import { bibleState, eventsBetween, habitsToday, listProjects, listTasks, today } from "@/lib/data";
 import { ownerFirstName } from "@/lib/session";
 import { daySummary, groupTasks } from "@/lib/tasks";
 
@@ -31,7 +33,7 @@ export default async function TodayPage() {
     prisma.emailSuggestion.findMany({ where: { status: "pending", account: { emailEnabled: true } }, include: { account: { select: { email: true } } }, orderBy: [{ priority: "desc" }, { receivedAt: "desc" }], take: 12 }),
     prisma.calendarAccount.findMany({ select: { provider: true, scopes: true, emailEnabled: true, lastEmailScanAt: true } }),
   ]);
-  const habits = await habitsToday();
+  const [habits, bible] = await Promise.all([habitsToday(), bibleState()]);
   const saved = await prisma.savedQuote.findMany({ select: { kind: true, key: true } });
   const stoic = stoicOfDay(day);
   const verse = verseOfDay(day);
@@ -71,6 +73,22 @@ export default async function TodayPage() {
       </header>
 
       <HabitsToday habits={habits} />
+
+      {bible.started && bible.reading ? (
+        <BibleTodayBox
+          started
+          day={bible.current}
+          ot={bible.reading.ot}
+          nt={bible.reading.nt}
+          url={nivUrl([...bible.reading.ot, ...bible.reading.nt])}
+          read={bible.done.has(bible.current)}
+          behind={bible.progress.behind}
+          pct={bible.progress.pct}
+          catchUp={bible.catchUp}
+        />
+      ) : (
+        <BibleTodayBox started={false} />
+      )}
 
       <StatStrip
         items={[

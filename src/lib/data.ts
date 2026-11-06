@@ -3,7 +3,8 @@ import { prisma } from "./db";
 import { addDays, appTimeZone, dayBounds, ymdInTz } from "./dates";
 import type { SimpleBlock } from "./notion";
 import { summarize } from "./habits";
-import { getSettings } from "./settings";
+import { SETTING_KEYS, getSetting, getSettings } from "./settings";
+import { nextUnread, planDay, progress, readingFor } from "./bible-plan";
 
 /* ----------------------------------------------------------- client DTOs */
 
@@ -193,4 +194,16 @@ export async function habitsToday() {
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
   return habits.map((h) => summarize(h, new Set(h.checks.map((c) => c.day)), day, weekStart));
+}
+
+/* ------------------------------------------------------- Bible in a year */
+
+export async function bibleState() {
+  const start = await getSetting(SETTING_KEYS.biblePlanStart);
+  const day = today();
+  const doneRows = await prisma.bibleDay.findMany({ select: { day: true } });
+  const done = new Set(doneRows.map((r) => r.day));
+  if (!start) return { started: false as const, done };
+  const current = planDay(start, day);
+  return { started: true as const, start, current, done, reading: current ? readingFor(current) : null, progress: progress(done, current), catchUp: nextUnread(done, current) };
 }

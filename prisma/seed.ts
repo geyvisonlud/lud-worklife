@@ -28,6 +28,8 @@ async function main() {
     prisma.syncRun.deleteMany(),
     prisma.setting.deleteMany(),
     prisma.habit.deleteMany(),
+    prisma.bibleDay.deleteMany(),
+    prisma.bibleNote.deleteMany(),
   ]);
 
   /* ------------------------------------------------------------ calendars */
@@ -249,6 +251,79 @@ async function main() {
   await habit("Gym", "💪", "orange", 3, 150, 0.42, 0, 4);
   await habit("English practice", "🇺🇸", "blue", 5, 60, 0.6, 2, 5);
   await prisma.habitCheck.createMany({ data: [water, prayer].map((h) => ({ habitId: h.id, day: today })) });
+
+  /* ------------------------------------------------------ Bible in a year */
+  // Started two days ago (days 1–2 read); today is day 3: Genesis 5–6 and Matthew 2.
+  await prisma.setting.create({ data: { key: "biblePlanStart", value: addDays(today, -2) } });
+  await prisma.bibleDay.createMany({ data: [{ day: 1 }, { day: 2 }] });
+  const note = (book: string, chapter: number, content: object) =>
+    prisma.bibleNote.create({ data: { book, chapter, model: "demo", content: content as Prisma.InputJsonValue } });
+  await note("Genesis", 5, {
+    summary: "The family line from Adam to Noah. Ten generations are listed with the same rhythm — he lived, had sons and daughters, and then he died — until Noah, whose father hopes he will bring relief from the curse.",
+    context: "Ancient Near Eastern peoples kept genealogies to show identity and inheritance; the Sumerian King List also gives enormous lifespans before a flood. Christians read the ages in different ways (literal years, symbolic numbers, or selective lists), but the point is the same: God's blessing and promise continue through a chosen line.",
+    outline: [
+      { verses: "1–2", title: "Made in God's likeness, blessed and named" },
+      { verses: "3–20", title: "From Adam to Jared — 'and then he died'" },
+      { verses: "21–24", title: "Enoch walked faithfully with God" },
+      { verses: "25–32", title: "Methuselah, Lamech and Noah" },
+    ],
+    themes: ["The image of God passed on", "The reality of death", "Walking with God", "Hope for relief"],
+    keyVerses: [
+      { ref: "Genesis 5:24", note: "Enoch breaks the pattern of death: a life of close fellowship with God that ends with God taking him." },
+      { ref: "Genesis 5:29", note: "Lamech names Noah in hope of comfort from the painful toil of the cursed ground — a longing the whole Bible carries forward." },
+    ],
+    crossReferences: [
+      { ref: "Hebrews 11:5", note: "Enoch is remembered for the faith that pleased God." },
+      { ref: "Romans 5:12", note: "Death entered the world through one man — the refrain of this chapter." },
+      { ref: "Luke 3:36-38", note: "Luke traces Jesus' family line back through these names to Adam." },
+    ],
+    reflection: "In a list of lives that end the same way, one man is remembered for how he walked. Your day will be full of ordinary repetition too; what can make it different is walking it with God, step by step.",
+    question: "What would 'walking with God' look like in the most ordinary hour of your day today?",
+  });
+  await note("Genesis", 6, {
+    summary: "Human evil spreads until God grieves that he made mankind and resolves to send a flood. Noah, who walks faithfully with God, finds favor and is told to build an ark to save his family and the animals.",
+    context: "Verses 1–4 (the 'sons of God' and the Nephilim) are among the most debated in Genesis: readers have seen them as fallen angels, the godly line of Seth marrying outside it, or tyrant kings. Flood stories exist across the ancient world, but Genesis presents the flood as the moral judgment of a holy and grieving God, not the whim of irritated gods.",
+    outline: [
+      { verses: "1–4", title: "The sons of God and the Nephilim" },
+      { verses: "5–8", title: "The Lord's grief over human wickedness" },
+      { verses: "9–12", title: "Noah, righteous in a corrupt world" },
+      { verses: "13–22", title: "The ark and the first mention of covenant" },
+    ],
+    themes: ["God's grief over sin", "Grace in judgment", "Faithful obedience", "Covenant"],
+    keyVerses: [
+      { ref: "Genesis 6:8", note: "Before anything is said about Noah's goodness, the text says he found favor — grace comes first." },
+      { ref: "Genesis 6:22", note: "Noah did everything just as God commanded: faith shown in long, unglamorous obedience." },
+    ],
+    crossReferences: [
+      { ref: "Hebrews 11:7", note: "Noah built the ark by faith, warned about things not yet seen." },
+      { ref: "Matthew 24:37-39", note: "Jesus compares his return to the days of Noah, when life went on as if nothing would happen." },
+      { ref: "1 Peter 3:20-21", note: "The salvation of Noah's family through the water points to baptism." },
+    ],
+    reflection: "Noah's faithfulness was mostly invisible work: measuring, cutting, building, for years, before anyone could see why. Faithfulness today may look like doing the next right thing carefully, trusting God with the outcome.",
+    question: "Where is God asking you for steady, unseen obedience right now?",
+  });
+  await note("Matthew", 2, {
+    summary: "Magi from the east follow a star to worship the newborn king of the Jews, while King Herod plots to kill him. Warned in dreams, Joseph takes Mary and Jesus to Egypt, Herod massacres the boys of Bethlehem, and after Herod's death the family settles in Nazareth.",
+    context: "Herod the Great was a ruthless client king of Rome who killed even members of his own family; he died around 4 BC, so Jesus was born a little before that. The Magi were probably scholar-astrologers from Persia or Babylon. Matthew shows Jesus reliving Israel's story — going down to Egypt and coming out again — and fulfilling the prophets.",
+    outline: [
+      { verses: "1–12", title: "The Magi worship the true king" },
+      { verses: "13–15", title: "Escape to Egypt" },
+      { verses: "16–18", title: "Herod's massacre in Bethlehem" },
+      { verses: "19–23", title: "Return and settling in Nazareth" },
+    ],
+    themes: ["Jesus the true king", "Worship from the nations", "God's protection", "Fulfilled prophecy"],
+    keyVerses: [
+      { ref: "Matthew 2:10-11", note: "The Magi are overjoyed and bow down — outsiders recognize the king that Jerusalem's leaders ignore." },
+      { ref: "Matthew 2:15", note: "'Out of Egypt I called my son' (Hosea 11:1): Jesus is the faithful Son that Israel was meant to be." },
+    ],
+    crossReferences: [
+      { ref: "Micah 5:2", note: "The ruler of Israel would come from little Bethlehem." },
+      { ref: "Numbers 24:17", note: "Balaam's oracle of a star rising out of Jacob." },
+      { ref: "Isaiah 60:3-6", note: "Nations come to the light, bringing gold and incense." },
+    ],
+    reflection: "The same news brought joy to the Magi and fear to Herod. Jesus' kingship still does both: it either threatens our control or becomes our greatest joy. Today, bring him your 'gifts' — your time, attention and plans — and let him lead.",
+    question: "Is there an area of your life where you are, like Herod, trying to stay in control instead of bowing to Jesus as king?",
+  });
 
   await prisma.setting.create({ data: { key: "taskCalendarId", value: "" } });
   console.log(`Seeded ${events.length} events, 7 projects and tasks for the week of ${week} (${tz}).`);

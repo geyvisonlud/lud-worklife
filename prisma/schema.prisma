@@ -266,3 +266,26 @@ model HabitCheck {
   @@unique([habitId, day])
   @@index([day])
 }
+
+/// ---------------------------------------------------------------------------
+/// Bible in a year (plan start date is the Setting "biblePlanStart")
+/// ---------------------------------------------------------------------------
+
+/// A plan day (1–365) you marked as read.
+model BibleDay {
+  day    Int      @id
+  readAt DateTime @default(now())
+}
+
+/// Study notes for one chapter, written by Claude once and kept (see lib/bible-notes.ts).
+model BibleNote {
+  id        String   @id @default(cuid())
+  book      String
+  chapter   Int
+  /// ChapterNote JSON: summary, context, themes, key verses, cross-references, reflection.
+  content   Json
+  model     String
+  createdAt DateTime @default(now())
+
+  @@unique([book, chapter])
+}
