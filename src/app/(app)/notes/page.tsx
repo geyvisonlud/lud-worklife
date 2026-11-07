@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import { NotesWorkspace } from "@/components/Notes";
 import { PageHeader } from "@/components/ui";
 import { prisma } from "@/lib/db";
-import { listFolders, listNotes, listTags, noteDTO } from "@/lib/notes-data";
+import { listFolders, listNotes, listTags, noteDTO, NOTE_INCLUDE } from "@/lib/notes-data";
+import { listCalendars } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -10,13 +11,14 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const q = (sp.q ?? "").slice(0, 200);
   const folderId = sp.folder === "none" ? null : sp.folder || undefined;
-  const [notes, folders, tags, total, unfiled, open] = await Promise.all([
+  const [notes, folders, tags, total, unfiled, open, calendars] = await Promise.all([
     listNotes({ q, folderId, tag: sp.tag, pinnedFirst: true }),
     listFolders(),
     listTags(),
     prisma.note.count(),
     prisma.note.count({ where: { folderId: null } }),
-    sp.n ? prisma.note.findUnique({ where: { id: sp.n }, include: { folder: true } }) : null,
+    sp.n ? prisma.note.findUnique({ where: { id: sp.n }, include: NOTE_INCLUDE }) : null,
+    listCalendars(),
   ]);
   return (
     <div>
@@ -32,6 +34,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
           filter={{ q, folder: sp.folder, tag: sp.tag }}
           total={total}
           unfiled={unfiled}
+          calendars={calendars.filter((c) => c.canWrite).map((c) => ({ id: c.id, label: `${c.name} · ${c.accountEmail}`, color: c.color }))}
         />
       </Suspense>
     </div>

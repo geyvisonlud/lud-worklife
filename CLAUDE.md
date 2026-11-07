@@ -61,6 +61,10 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   title from first line, excerpt, `#tag` search syntax, `mailtoHref` for e-mail sharing — plain text), loaders in `lib/notes-data.ts`.
   `/notes` = folders/tags sidebar, list, editor (autosave ~0.7 s, Edit/Preview, checklist boxes toggle the source line);
   `NotesBox` on Today (6 latest + search via `findNotes`). Markdown is rendered with react-markdown + remark-gfm (no raw HTML).
+  Notes without a folder are the **Inbox** (`?folder=none`). Two views, remembered in localStorage `lw:notes-view`: list (sidebar ·
+  list · editor) and boxes (masonry cards; on desktop the note opens over them, Esc closes). `Note.color` is a PROJECT_COLORS key
+  (tinted card/editor via `noteTint`). "Make it a project" (`noteToProject`, sets `Note.projectId`) and "Add to calendar…"
+  (`noteToEvent`: any writable calendar; Google calendars get the event in Google too; `noteEvent` in lib/notes.ts builds it).
 - Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).

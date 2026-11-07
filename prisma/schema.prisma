@@ -95,6 +95,7 @@ model Event {
   meetLink       String?
   /// Our response: accepted | tentative | declined | needsAction (null when we're the organizer).
   responseStatus String?
+  notes          Note[]
 
   @@unique([calendarId, externalId])
   @@index([start])
@@ -135,6 +136,7 @@ model Project {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   tasks           Task[]
+  notes           Note[]
 }
 
 model Task {
@@ -324,6 +326,13 @@ model Note {
   /// Lowercase, without "#".
   tags      String[]    @default([])
   pinned    Boolean     @default(false)
+  /// Palette key from lib/colors.ts (PROJECT_COLORS); null = plain.
+  color     String?
+  /// Project / calendar event made from this note.
+  projectId String?
+  project   Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  eventId   String?
+  event     Event?      @relation(fields: [eventId], references: [id], onDelete: SetNull)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 

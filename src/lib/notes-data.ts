@@ -1,4 +1,4 @@
-import type { Note, NoteFolder, Prisma } from "@prisma/client";
+import type { Calendar, Event, Note, NoteFolder, Prisma, Project } from "@prisma/client";
 import { prisma } from "./db";
 import { excerpt, noteTitle, parseQuery } from "./notes";
 
@@ -13,21 +13,31 @@ export type NoteDTO = {
   folderName: string | null;
   tags: string[];
   pinned: boolean;
+  /** Palette key (lib/colors.ts) or null. */
+  color: string | null;
+  project: { id: string; name: string } | null;
+  event: { start: string; allDay: boolean; calendar: string } | null;
   createdAt: string;
   updatedAt: string;
 };
 export type FolderDTO = { id: string; name: string; count: number };
 
-export const noteDTO = (n: Note & { folder?: NoteFolder | null }): NoteDTO => ({
+type NoteRow = Note & { folder?: NoteFolder | null; project?: Project | null; event?: (Event & { calendar?: Calendar }) | null };
+export const NOTE_INCLUDE = { folder: true, project: true, event: { include: { calendar: true } } } as const;
+
+export const noteDTO = (n: NoteRow): NoteDTO => ({
   id: n.id,
   title: n.title,
   displayTitle: noteTitle(n),
-  excerpt: excerpt(n),
+  excerpt: excerpt(n, 400),
   body: n.body,
   folderId: n.folderId,
   folderName: n.folder?.name ?? null,
   tags: n.tags,
   pinned: n.pinned,
+  color: n.color,
+  project: n.project ? { id: n.project.id, name: n.project.name } : null,
+  event: n.event ? { start: n.event.start.toISOString(), allDay: n.event.allDay, calendar: n.event.calendar?.name ?? "" } : null,
   createdAt: n.createdAt.toISOString(),
   updatedAt: n.updatedAt.toISOString(),
 });
@@ -49,7 +59,7 @@ export function noteWhere(opts: { q?: string; folderId?: string | null; tag?: st
 export async function listNotes(opts: { q?: string; folderId?: string | null; tag?: string; take?: number; pinnedFirst?: boolean } = {}) {
   const rows = await prisma.note.findMany({
     where: noteWhere(opts),
-    include: { folder: true },
+    include: NOTE_INCLUDE,
     orderBy: opts.pinnedFirst ? [{ pinned: "desc" }, { updatedAt: "desc" }] : [{ updatedAt: "desc" }],
     take: opts.take ?? 200,
   });

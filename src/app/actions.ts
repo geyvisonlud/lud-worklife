@@ -7,9 +7,10 @@ import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, SESSION_MAX_AGE, allowedEmails, createSessionToken, passwordOk, verifySessionToken } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { isHex, isProjectColor } from "@/lib/colors";
-import { appTimeZone, isYmd, ymdInTz } from "@/lib/dates";
+import { appTimeZone, isYmd, ymdInTz, zonedToUtc } from "@/lib/dates";
 import { isProjectStage, isTaskStatus, positionAt } from "@/lib/kanban";
-import { mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
+import { accessToken, mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
+import { googleApi } from "@/lib/google";
 import { deleteGoogleTask, pushGoogleTask, syncAllTaskLists, syncTaskLists, unlinkLists } from "@/lib/google-tasks-sync";
 import { findUserByEmail, notionApi } from "@/lib/notion";
 import { syncAllNotion, syncNotionConnection } from "@/lib/notion-sync";
@@ -18,7 +19,7 @@ import { gmailLink, taskNotesFromEmail } from "@/lib/email";
 import { scanAllEmail } from "@/lib/email-sync";
 import { findQuote, isQuoteKind } from "@/lib/daily";
 import { PLAN_DAYS } from "@/lib/bible-plan";
-import { normalizeTags } from "@/lib/notes";
+import { normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
 import { listNotes, type NoteDTO } from "@/lib/notes-data";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -466,7 +467,7 @@ export async function saveSettings(form: FormData) {
 
 /* ----------------------------------------------------------------- notes */
 
-export type NoteInput = { title?: string; body?: string; folderId?: string | null; tags?: string[] | string; pinned?: boolean };
+export type NoteInput = { title?: string; body?: string; folderId?: string | null; tags?: string[] | string; pinned?: boolean; color?: string | null };
 
 function noteData(input: NoteInput) {
   const data: Record<string, unknown> = {};
@@ -475,6 +476,7 @@ function noteData(input: NoteInput) {
   if (input.folderId !== undefined) data.folderId = input.folderId || null;
   if (input.tags !== undefined) data.tags = normalizeTags(input.tags);
   if (input.pinned !== undefined) data.pinned = Boolean(input.pinned);
+  if (input.color !== undefined) data.color = isProjectColor(input.color) ? input.color : null;
   return data;
 }
 
@@ -520,5 +522,46 @@ export async function renameFolder(id: string, name: string) {
 /** Its notes stay, without a folder. */
 export async function deleteFolder(id: string) {
   await prisma.noteFolder.deleteMany({ where: { id } });
-  return done("Folder deleted — its notes are under No folder");
+  return done("Folder deleted — its notes are in the Inbox");
+}
+
+/** A project named after the note, with its text as the description (the note stays, linked to it). */
+export async function noteToProject(id: string): Promise<ActionResult & { projectId?: string }> {
+  const n = await prisma.note.findUnique({ where: { id } });
+  if (!n) return fail("That note no longer exists.");
+  const r = await createProject({ name: noteTitle(n).slice(0, 200), description: plainText(n.body).slice(0, 2000), color: n.color ?? "blue", stage: "planned" });
+  if (!r.ok || !r.id) return r;
+  await prisma.note.update({ where: { id }, data: { projectId: r.id } });
+  return { ...done("Project created"), projectId: r.id };
+}
+
+/**
+ * An event made from the note in one of your calendars (Google calendars get it in Google too).
+ * `time` "HH:MM" or null for all day; the event links back to the note.
+ */
+export async function noteToEvent(id: string, input: { calendarId: string; date: string; time: string | null; durationMin: number }): Promise<ActionResult> {
+  const n = await prisma.note.findUnique({ where: { id } });
+  if (!n) return fail("That note no longer exists.");
+  if (!isYmd(input.date)) return fail("Pick a date.");
+  const cal = await prisma.calendar.findUnique({ where: { id: input.calendarId }, include: { account: true } });
+  if (!cal || !cal.canWrite) return fail("Pick a calendar you can add events to.");
+  const tz = appTimeZone();
+  const e = noteEvent(n, { date: input.date, time: input.time, durationMin: Number(input.durationMin) || 60, tz }, zonedToUtc, process.env.APP_URL);
+  try {
+    let externalId = `note-${n.id}-${Date.now()}`;
+    let htmlLink: string | null = null;
+    if (cal.account.provider === "google") {
+      const token = await accessToken(cal.account);
+      const created = await googleApi<{ id: string; htmlLink?: string }>(token, `/calendars/${encodeURIComponent(cal.externalId)}/events`, { method: "POST", body: e.google });
+      externalId = created.id;
+      htmlLink = created.htmlLink ?? null;
+    }
+    const ev = await prisma.event.create({
+      data: { calendarId: cal.id, externalId, title: e.title, description: e.description ?? null, start: e.start, end: e.end, allDay: e.allDay, htmlLink },
+    });
+    await prisma.note.update({ where: { id }, data: { eventId: ev.id } });
+    return done(`Added to ${cal.name}`);
+  } catch (err) {
+    return fail(`Couldn't add the event: ${(err as Error).message}`);
+  }
 }

@@ -29,3 +29,34 @@ describe("notes", () => {
     expect(href).not.toContain("+");
   });
 });
+
+import { noteEvent, parseHm } from "./notes";
+import { zonedToUtc } from "./dates";
+
+describe("note → calendar event", () => {
+  it("parses times", () => {
+    expect(parseHm("09:30")).toBe(570);
+    expect(parseHm("24:00")).toBeNull();
+    expect(parseHm("")).toBeNull();
+  });
+  it("makes a timed event in the app time zone", () => {
+    const e = noteEvent({ id: "n1", title: "", body: "# Call Ana\nAbout the budget" }, { date: "2026-11-10", time: "14:00", durationMin: 45, tz: "America/New_York" }, zonedToUtc, "https://app.dev/");
+    expect(e.title).toBe("Call Ana");
+    expect(e.start.toISOString()).toBe("2026-11-10T19:00:00.000Z");
+    expect(e.end.toISOString()).toBe("2026-11-10T19:45:00.000Z");
+    expect(e.google.start).toEqual({ dateTime: "2026-11-10T19:00:00.000Z", timeZone: "America/New_York" });
+    expect(e.description).toBe("Call Ana\nAbout the budget\n\nhttps://app.dev/notes?n=n1");
+  });
+  it("makes an all-day event", () => {
+    const e = noteEvent({ id: "n1", title: "Retreat", body: "" }, { date: "2026-12-31", time: null, durationMin: 60, tz: "America/New_York" }, zonedToUtc);
+    expect(e.allDay).toBe(true);
+    expect(e.google).toMatchObject({ start: { date: "2026-12-31" }, end: { date: "2027-01-01" } });
+    expect(e.start.toISOString()).toBe("2026-12-31T00:00:00.000Z");
+  });
+});
+
+describe("tables in plain text", () => {
+  it("flattens Markdown tables", () => {
+    expect(plainText("| Area | Owner |\n|---|:--:|\n| Data | Lud |")).toBe("Area · Owner\nData · Lud");
+  });
+});
