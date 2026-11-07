@@ -18,6 +18,8 @@ import { gmailLink, taskNotesFromEmail } from "@/lib/email";
 import { scanAllEmail } from "@/lib/email-sync";
 import { findQuote, isQuoteKind } from "@/lib/daily";
 import { PLAN_DAYS } from "@/lib/bible-plan";
+import { normalizeTags } from "@/lib/notes";
+import { listNotes, type NoteDTO } from "@/lib/notes-data";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -460,4 +462,63 @@ export async function saveSettings(form: FormData) {
   await setSetting(SETTING_KEYS.defaultDuration, String(dur));
   await setSetting(SETTING_KEYS.weekStart, week);
   revalidatePath("/", "layout");
+}
+
+/* ----------------------------------------------------------------- notes */
+
+export type NoteInput = { title?: string; body?: string; folderId?: string | null; tags?: string[] | string; pinned?: boolean };
+
+function noteData(input: NoteInput) {
+  const data: Record<string, unknown> = {};
+  if (input.title !== undefined) data.title = clean(input.title, 200);
+  if (input.body !== undefined) data.body = typeof input.body === "string" ? input.body.slice(0, 100_000) : "";
+  if (input.folderId !== undefined) data.folderId = input.folderId || null;
+  if (input.tags !== undefined) data.tags = normalizeTags(input.tags);
+  if (input.pinned !== undefined) data.pinned = Boolean(input.pinned);
+  return data;
+}
+
+export async function createNote(input: NoteInput = {}): Promise<ActionResult & { id?: string }> {
+  if (input.folderId && !(await prisma.noteFolder.findUnique({ where: { id: input.folderId } }))) input.folderId = null;
+  const n = await prisma.note.create({ data: noteData(input) });
+  return { ...done(), id: n.id };
+}
+
+/** Autosave from the editor: no page refresh needed, so it skips revalidation unless asked. */
+export async function updateNote(id: string, input: NoteInput, refresh = false): Promise<ActionResult & { updatedAt?: string }> {
+  const n = await prisma.note.update({ where: { id }, data: noteData(input) }).catch(() => null);
+  if (!n) return fail("That note no longer exists.");
+  if (refresh) revalidatePath("/", "layout");
+  return { ok: true, updatedAt: n.updatedAt.toISOString() };
+}
+
+export async function deleteNote(id: string) {
+  await prisma.note.deleteMany({ where: { id } });
+  return done("Note deleted");
+}
+
+/** Search for the Notes box on Today. */
+export async function findNotes(q: string): Promise<NoteDTO[]> {
+  return listNotes({ q: clean(q, 200), take: 8 });
+}
+
+export async function createFolder(name: string): Promise<ActionResult & { id?: string }> {
+  const n = clean(name, 60);
+  if (!n) return fail("Give the folder a name.");
+  const last = await prisma.noteFolder.findFirst({ orderBy: { position: "desc" } });
+  const f = await prisma.noteFolder.create({ data: { name: n, position: (last?.position ?? 0) + 1024 } });
+  return { ...done(), id: f.id };
+}
+
+export async function renameFolder(id: string, name: string) {
+  const n = clean(name, 60);
+  if (!n) return fail("Give the folder a name.");
+  await prisma.noteFolder.update({ where: { id }, data: { name: n } });
+  return done();
+}
+
+/** Its notes stay, without a folder. */
+export async function deleteFolder(id: string) {
+  await prisma.noteFolder.deleteMany({ where: { id } });
+  return done("Folder deleted — its notes are under No folder");
 }

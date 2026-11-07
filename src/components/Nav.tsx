@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CheckCircle2, BookOpen, Heart, KanbanSquare, LogOut, PlugZap, Repeat, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CalendarDays, CheckCircle2, BookOpen, Heart, KanbanSquare, LogOut, MoreHorizontal, NotebookPen, PlugZap, Repeat, Sun } from "lucide-react";
 import { logout } from "@/app/actions";
 
 const ITEMS = [
@@ -11,9 +12,10 @@ const ITEMS = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays, group: "Plan" },
   { href: "/habits", label: "Habits", icon: Repeat, group: "Plan", desktopOnly: true },
   { href: "/bible", label: "Bible", icon: BookOpen, group: "Plan", desktopOnly: true },
-  { href: "/projects", label: "Projects", icon: KanbanSquare, group: "Work" },
+  { href: "/projects", label: "Projects", icon: KanbanSquare, group: "Work", phoneMore: true },
+  { href: "/notes", label: "Notes", icon: NotebookPen, group: "Work" },
   { href: "/saved", label: "Saved", icon: Heart, group: "Work", desktopOnly: true },
-  { href: "/connections", label: "Connections", icon: PlugZap, group: "Settings" },
+  { href: "/connections", label: "Connections", icon: PlugZap, group: "Settings", phoneMore: true },
 ];
 const GROUPS = ["Plan", "Work", "Settings"];
 
@@ -78,21 +80,54 @@ export function Sidebar({ badges, authEnabled, sync }: { badges: Badges; authEna
   );
 }
 
-/** iPhone-style tab bar: all five sections fit. */
+/** iPhone-style tab bar: Today, Tasks, Calendar, Notes — everything else under More. */
 export function TabBar({ badges }: { badges: Badges }) {
   const path = usePathname();
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [path]);
+  const tabs = ITEMS.filter((i) => !("desktopOnly" in i) && !("phoneMore" in i));
+  const rest = [...ITEMS.filter((i) => "phoneMore" in i && i.group !== "Settings"), ...ITEMS.filter((i) => "desktopOnly" in i), ...ITEMS.filter((i) => "phoneMore" in i && i.group === "Settings")];
+  const moreActive = rest.some((i) => isActive(path, i.href));
   return (
-    <nav className="glass fixed inset-x-0 bottom-0 z-30 flex border-t border-hairline pb-[env(safe-area-inset-bottom)] md:hidden">
-      {ITEMS.filter((i) => !("desktopOnly" in i)).map(({ href, label, icon: Icon }) => {
-        const active = isActive(path, href);
-        return (
-          <Link key={href} href={href} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${active ? "text-accent" : "text-ink-2"}`}>
-            <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
-            {label}
-            {badges[href] ? <span className={`absolute right-[calc(50%-18px)] top-1 h-2 w-2 rounded-full ${href === "/tasks" ? "bg-bad" : "bg-accent"}`} /> : null}
-          </Link>
-        );
-      })}
-    </nav>
+    <>
+      {more && <div className="fixed inset-0 z-40 bg-black/25 md:hidden" onClick={() => setMore(false)} aria-hidden />}
+      {more && (
+        <div className="fixed inset-x-3 bottom-[calc(64px+env(safe-area-inset-bottom))] z-50 bg-[var(--card-bg-strong)] backdrop-blur-xl rounded-[18px] border border-hairline p-2 shadow-[var(--shadow-lift)] md:hidden" role="menu" aria-label="More">
+          <div className="grid grid-cols-3 gap-1">
+            {rest.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                role="menuitem"
+                className={`flex flex-col items-center gap-1 rounded-[12px] px-1 py-3 text-[12px] font-medium ${isActive(path, href) ? "bg-surface-3 text-accent" : "text-ink-2 active:bg-surface-2"}`}
+              >
+                <Icon size={21} strokeWidth={1.8} />
+                {label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      <nav className="glass fixed inset-x-0 bottom-0 z-50 flex border-t border-hairline pb-[env(safe-area-inset-bottom)] md:hidden">
+        {tabs.map(({ href, label, icon: Icon }) => {
+          const active = !more && isActive(path, href);
+          return (
+            <Link key={href} href={href} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${active ? "text-accent" : "text-ink-2"}`}>
+              <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
+              {label}
+              {badges[href] ? <span className={`absolute right-[calc(50%-18px)] top-1 h-2 w-2 rounded-full ${href === "/tasks" ? "bg-bad" : "bg-accent"}`} /> : null}
+            </Link>
+          );
+        })}
+        <button
+          onClick={() => setMore((v) => !v)}
+          aria-expanded={more}
+          className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${more || moreActive ? "text-accent" : "text-ink-2"}`}
+        >
+          <MoreHorizontal size={22} strokeWidth={more || moreActive ? 2.2 : 1.8} />
+          More
+        </button>
+      </nav>
+    </>
   );
 }

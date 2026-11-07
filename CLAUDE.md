@@ -27,7 +27,7 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 
 ## Where things are
 
-- `src/app/(app)/*` — pages: today (`page.tsx`), tasks, calendar, habits, habits/[id], bible, projects, projects/[id], saved, connections
+- `src/app/(app)/*` — pages: today (`page.tsx`), tasks, calendar, notes, habits, habits/[id], bible, projects, projects/[id], saved, connections
 - `src/app/actions.ts` — all server actions; return `ActionResult` (`{ ok: true, message? } | { ok: false, error }`), shown as toasts by `useReport()`
 - `src/components/TaskSheet.tsx` — `WorkProvider` (tz, today, projects, the single task editor, toasts) — open the editor with `useWork().openTask(task, defaults)`
 - `src/components/Kanban.tsx` — generic board + `ProjectBoard` / `TaskBoard`; `CalendarView.tsx` — grid, tray, drag/resize
@@ -56,6 +56,12 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   Connections); open tasks are imported, then changes since `lastSyncedAt` (deletions too) are pulled. Edits here (title, notes, due date,
   done) are pushed by the task actions; `Task.googleTaskUpdated` keeps our own writes from being pulled back. Google has no time,
   priority or project — those stay local. Pulled with the calendar sync and by `GoogleTasksAutoSync` on Today/Tasks.
+- Notes (own notes — Google Keep has no API for personal accounts): `Note` (Markdown `body`, `tags` String[] lowercase without
+  "#", `pinned`, optional `NoteFolder`), listed by `updatedAt` (last edited/added first). Pure helpers in `lib/notes.ts` (tags,
+  title from first line, excerpt, `#tag` search syntax, `mailtoHref` for e-mail sharing — plain text), loaders in `lib/notes-data.ts`.
+  `/notes` = folders/tags sidebar, list, editor (autosave ~0.7 s, Edit/Preview, checklist boxes toggle the source line);
+  `NotesBox` on Today (6 latest + search via `findNotes`). Markdown is rendered with react-markdown + remark-gfm (no raw HTML).
+- Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).
   `HabitDock` (floating, all pages except Today and /habits) remembers minimized/open in localStorage (`lw:habit-dock`).

@@ -1,3 +1,5 @@
+import { NotesBox } from "@/components/Notes";
+import { listNotes } from "@/lib/notes-data";
 import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import Link from "next/link";
 import { Agenda } from "@/components/Agenda";
@@ -33,7 +35,7 @@ export default async function TodayPage() {
     prisma.emailSuggestion.findMany({ where: { status: "pending", account: { emailEnabled: true } }, include: { account: { select: { email: true } } }, orderBy: [{ priority: "desc" }, { receivedAt: "desc" }], take: 12 }),
     prisma.calendarAccount.findMany({ select: { provider: true, scopes: true, emailEnabled: true, lastEmailScanAt: true } }),
   ]);
-  const [habits, bible] = await Promise.all([habitsToday(), bibleState()]);
+  const [habits, bible, recentNotes] = await Promise.all([habitsToday(), bibleState(), listNotes({ take: 6 })]);
   const saved = await prisma.savedQuote.findMany({ select: { kind: true, key: true } });
   const stoic = stoicOfDay(day);
   const verse = verseOfDay(day);
@@ -176,6 +178,9 @@ export default async function TodayPage() {
           ) : (
             <BibleTodayBox started={false} />
           )}
+          </div>
+          <div className="order-5 lg:order-none">
+            <NotesBox notes={recentNotes} />
           </div>
         </div>
       </div>

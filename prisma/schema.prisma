@@ -304,3 +304,28 @@ model BibleDay {
   readAt DateTime @default(now())
 }
 
+
+/// A folder of notes (one level; deleting it moves its notes to "No folder").
+model NoteFolder {
+  id        String   @id @default(cuid())
+  name      String
+  position  Float    @default(0)
+  createdAt DateTime @default(now())
+  notes     Note[]
+}
+
+/// A note written in Markdown. Listed by `updatedAt` (last edited or added first).
+model Note {
+  id        String      @id @default(cuid())
+  title     String      @default("")
+  body      String      @default("")
+  folderId  String?
+  folder    NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  /// Lowercase, without "#".
+  tags      String[]    @default([])
+  pinned    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([updatedAt])
+}
