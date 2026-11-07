@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Archive, ArchiveRestore, ChevronDown, Flame, Pencil, Plus, Trash2 } from "lucide-react";
@@ -391,6 +391,132 @@ export function RestoreHabit({ id }: { id: string }) {
 
 
 /** Today: the day's habits as one compact row of tappable pills. */
+/** How long an icon has to be held to check a habit off (or undo it). */
+const HOLD_MS = 650;
+
+/**
+ * One habit as a story-style circle: hold it until the ring closes to check it off for today;
+ * hold a done one until the ring empties to undo. A tap does nothing, so the strip can't be ticked by accident.
+ */
+function HabitStory({ h, onComplete }: { h: HabitSummary; onComplete: () => void }) {
+  const c = projectColor(h.color).hex;
+  const [p, setP] = useState(0); // 0–1 hold progress
+  const raf = useRef<number | null>(null);
+  const t0 = useRef(0);
+  const fired = useRef(false);
+
+  const stop = () => {
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = null;
+  };
+  const begin = () => {
+    stop();
+    fired.current = false;
+    t0.current = performance.now() - p * HOLD_MS;
+    const step = (now: number) => {
+      const v = Math.min(1, (now - t0.current) / HOLD_MS);
+      setP(v);
+      if (v >= 1) {
+        fired.current = true;
+        raf.current = null;
+        navigator.vibrate?.(12);
+        onComplete();
+        setTimeout(() => setP(0), 180);
+        return;
+      }
+      raf.current = requestAnimationFrame(step);
+    };
+    raf.current = requestAnimationFrame(step);
+  };
+  /** Let go early: the ring runs back quickly. */
+  const release = () => {
+    if (fired.current || !raf.current) return;
+    stop();
+    const from = performance.now();
+    const p0 = p;
+    const back = (now: number) => {
+      const v = Math.max(0, p0 - (now - from) / 220);
+      setP(v);
+      if (v > 0) raf.current = requestAnimationFrame(back);
+      else raf.current = null;
+    };
+    raf.current = requestAnimationFrame(back);
+  };
+  useEffect(() => stop, []);
+
+  const size = 60;
+  const r = size / 2 - 2.5;
+  const C = 2 * Math.PI * r;
+  // Filled share of the ring: grows while holding an open habit, drains while holding a done one.
+  const fill = h.doneToday ? 1 - p : p;
+  const label = `${h.name}${h.doneToday ? " — done today" : ""}. Hold to ${h.doneToday ? "undo" : "check off"}.`;
+
+  return (
+    <li className="shrink-0">
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={h.doneToday}
+        title={h.name}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          begin();
+        }}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onLostPointerCapture={release}
+        onKeyDown={(e) => {
+          if ((e.key === " " || e.key === "Enter") && !e.repeat) {
+            e.preventDefault();
+            begin();
+          }
+        }}
+        onKeyUp={(e) => (e.key === " " || e.key === "Enter") && release()}
+        onContextMenu={(e) => e.preventDefault()}
+        className="relative block select-none rounded-full outline-none [-webkit-touch-callout:none] [-webkit-user-select:none] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]"
+        style={{ width: size, height: size, touchAction: "manipulation", transform: `scale(${1 - Math.min(p, 1) * 0.06})`, transition: "transform 120ms" }}
+      >
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 -rotate-90" aria-hidden>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--hairline-strong)" strokeWidth="2" />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={c}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={C}
+            strokeDashoffset={C * (1 - fill)}
+            opacity={fill > 0 ? 1 : 0}
+          />
+        </svg>
+        <span
+          className="absolute inset-[6px] flex items-center justify-center rounded-full text-[24px] leading-none transition-colors"
+          style={{ background: h.doneToday ? `color-mix(in srgb, ${c} 16%, var(--surface))` : "var(--surface-2)" }}
+          aria-hidden
+        >
+          <span className={h.doneToday ? "" : "opacity-90"}>{h.emoji || h.name.slice(0, 1).toUpperCase()}</span>
+        </span>
+        {h.doneToday && (
+          <span className="absolute -right-0.5 bottom-0 flex h-[18px] w-[18px] items-center justify-center rounded-full ring-2 ring-[var(--surface)]" style={{ background: c }} aria-hidden>
+            <svg viewBox="0 0 16 16" width="10" height="10">
+              <path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        )}
+        {!h.doneToday && h.streak > 0 && (
+          <span className="num absolute -bottom-1 left-1/2 inline-flex -translate-x-1/2 items-center gap-px rounded-full bg-surface px-1.5 py-px text-[10px] font-medium text-warn shadow-[0_0_0_1px_var(--hairline)]" aria-hidden>
+            <Flame size={9} />
+            {h.streak}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
 export function HabitStrip({ habits }: { habits: HabitSummary[] }) {
   const { list, toggle } = useHabitList(habits);
   const done = list.filter((h) => h.doneToday).length;
@@ -406,53 +532,21 @@ export function HabitStrip({ habits }: { habits: HabitSummary[] }) {
     );
   }
   return (
-    <section className="card animate-in flex flex-col items-start gap-x-4 gap-y-2.5 !py-3 sm:flex-row sm:items-center">
-      <Link href="/habits" className="inline-flex items-center gap-2 pr-1 hover:text-ink" aria-label={`Habits: ${done} of ${list.length} done`}>
-        <ProgressRing done={done} total={list.length} />
-        <span className="label-mono">Habits</span>
-        <span className="num text-[12.5px] text-ink-2">
-          {done}/{list.length}
-        </span>
-      </Link>
-      <ul className="flex flex-1 flex-wrap gap-2">
-        {list.map((h) => {
-          const c = projectColor(h.color).hex;
-          return (
-            <li key={h.id}>
-              <button
-                role="checkbox"
-                aria-checked={h.doneToday}
-                onClick={() => toggle(h.id)}
-                className="inline-flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-[13px] transition-colors"
-                style={{
-                  borderColor: h.doneToday ? "transparent" : "var(--hairline-strong)",
-                  background: h.doneToday ? `color-mix(in srgb, ${c} 14%, var(--surface))` : "var(--surface)",
-                }}
-              >
-                <span
-                  className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
-                  style={{ background: h.doneToday ? c : "transparent", boxShadow: h.doneToday ? "none" : `inset 0 0 0 1.6px color-mix(in srgb, ${c} 70%, transparent)` }}
-                  aria-hidden
-                >
-                  {h.doneToday ? (
-                    <svg viewBox="0 0 16 16" width="12" height="12">
-                      <path d="M3.5 8.5l3 3 6-7" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : (
-                    <span className="text-[12px] leading-none">{h.emoji ?? ""}</span>
-                  )}
-                </span>
-                <span className={h.doneToday ? "text-ink-2" : ""}>{h.name}</span>
-                {h.streak > 0 && (
-                  <span className="num inline-flex items-center gap-0.5 text-[11.5px] text-warn">
-                    <Flame size={11} />
-                    {h.streak}
-                  </span>
-                )}
-              </button>
-            </li>
-          );
-        })}
+    <section className="card animate-in flex flex-col items-stretch gap-x-5 gap-y-3 !py-3.5 sm:flex-row sm:items-center">
+      <div className="flex items-center justify-between gap-3 sm:block sm:shrink-0">
+        <Link href="/habits" className="inline-flex items-center gap-2 pr-1 hover:text-ink" aria-label={`Habits: ${done} of ${list.length} done`}>
+          <ProgressRing done={done} total={list.length} />
+          <span className="label-mono">Habits</span>
+          <span className="num text-[12.5px] text-ink-2">
+            {done}/{list.length}
+          </span>
+        </Link>
+        <p className="text-[11.5px] text-ink-3 sm:mt-1">Hold an icon to check it off</p>
+      </div>
+      <ul className="-mx-1 flex gap-3.5 overflow-x-auto px-1 pb-1.5 pt-0.5 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+        {list.map((h) => (
+          <HabitStory key={h.id} h={h} onComplete={() => toggle(h.id)} />
+        ))}
       </ul>
     </section>
   );
