@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  /// Direct (non-pooled) connection for migrations. On Neon: the same URL without "-pooler".
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+/// ---------------------------------------------------------------------------
+/// Calendars — any number of Google accounts, each with its calendars
+/// ---------------------------------------------------------------------------
+
+/// A connected Google account (personal, work, church…).
+model CalendarAccount {
+  id              String            @id @default(cuid())
+  provider        String            @default("google") // google | demo
+  email           String            @unique
+  name            String?
+  picture         String?
+  /// OAuth tokens, encrypted (AES-256-GCM).
+  accessToken     String?
+  refreshToken    String?
+  expiresAt       DateTime?
+  status          String            @default("OK") // OK | RECONNECT | ERROR
+  lastError       String?
+  lastSyncedAt    DateTime?
+  /// OAuth scopes granted (space-separated); Gmail suggestions need gmail.readonly.
+  scopes          String?
+  /// Read this account's inbox for possible tasks.
+  emailEnabled    Boolean           @default(true)
+  lastEmailScanAt DateTime?
+  /// Last Google Tasks sync of this account, and its error (separate from the calendar's).
+  tasksSyncedAt   DateTime?
+  tasksError      String?
+  createdAt       DateTime          @default(now())
+  calendars       Calendar[]
+  emails          EmailSuggestion[]
+  taskLists       GoogleTaskList[]
+}
+
+/// A Google Tasks list; its tasks are mirrored both ways with Task rows.
+model GoogleTaskList {
+  id           String          @id @default(cuid())
+  accountId    String
+  account      CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  externalId   String
+  title        String
+  /// Import this list's tasks (and keep them in sync).
+  enabled      Boolean         @default(true)
+  /// Changes since this instant are fetched on the next sync (null = first sync: open tasks only).
+  lastSyncedAt DateTime?
+  tasks        Task[]
+
+  @@unique([accountId, externalId])
+}
+
+model Calendar {
+  id          String          @id @default(cuid())
+  accountId   String
+  account     CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Google calendar id ("primary" calendars use the account email).
+  externalId  String
+  name        String
+  /// The color this calendar has in Google Calendar (current palette), hex.
+  color       String
+  /// Local override; null = keep the Google color.
+  customColor String?
+  primary     Boolean         @default(false)
+  canWrite    Boolean         @default(false)
+  /// Shown on the calendar and synced.
+  visible     Boolean         @default(true)
+  timeZone    String?
+  events      Event[]
+
+  @@unique([accountId, externalId])
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  calendarId     String
+  calendar       Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  externalId     String
+  title          String
+  description    String?
+  location       String?
+  start          DateTime
+  end            DateTime
+  allDay         Boolean  @default(false)
+  /// Color set on this event in Google (overrides the calendar color), hex.
+  color          String?
+  htmlLink       String?
+  meetLink       String?
+  /// Our response: accepted | tentative | declined | needsAction (null when we're the organizer).
+  responseStatus String?
+  notes          Note[]
+
+  @@unique([calendarId, externalId])
+  @@index([start])
+}
+
+/// ---------------------------------------------------------------------------
+/// Projects (Kanban by stage) and tasks (Kanban by status, schedulable)
+/// ---------------------------------------------------------------------------
+
+model Project {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  emoji           String?
+  /// Palette key from lib/colors.ts (PROJECT_COLORS).
+  color           String    @default("blue")
+  stage           String    @default("planned") // planned | active | hold | done
+  position        Float     @default(0)
+  dueDate         String? // YYYY-MM-DD
+  archived        Boolean   @default(false)
+  source          String    @default("local") // local | notion
+  /// Notion page this project was imported from.
+  notionPageId    String?   @unique
+  notionUrl       String?
+  /// Where the page lives in Notion (database or parent page title).
+  notionParent    String?
+  notionWorkspace String?
+  /// The page's status property in Notion, as written there.
+  notionStatus    String?
+  /// Why it was imported: assigned (a people property) | mentioned (an @mention in the page).
+  notionReason    String?
+  /// Simplified page content (see lib/notion.ts SimpleBlock[]).
+  notionContent   Json?
+  notionEditedAt  DateTime?
+  notionSyncedAt  DateTime?
+  /// The stage was changed here, so Notion's status no longer moves it.
+  stageOverridden Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tasks           Task[]
+  notes           Note[]
+}
+
+model Task {
+  id               String    @id @default(cuid())
+  title            String
+  notes            String?
+  projectId        String?
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status           String    @default("todo") // backlog | todo | doing | done
+  /// 0 none · 1 low · 2 medium · 3 high
+  priority         Int       @default(0)
+  position         Float     @default(0)
+  dueDate          String? // YYYY-MM-DD
+  durationMin      Int       @default(30)
+  /// Set when the task is dropped on the calendar.
+  scheduledStart   DateTime?
+  /// Event created in Google for this time block (see Settings → "Add scheduled tasks to").
+  googleEventId    String?
+  googleCalendarId String?
+  /// to_do block this task came from (Notion import).
+  notionBlockId    String?   @unique
+  /// Google Tasks mirror (two-way): the task's id in Google and its list.
+  googleTaskId     String?
+  googleTaskListId String?
+  googleTaskList   GoogleTaskList? @relation(fields: [googleTaskListId], references: [id], onDelete: SetNull)
+  /// Google's `updated` for the version we last saw or wrote — newer ones are pulled in.
+  googleTaskUpdated DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([scheduledStart])
+  @@unique([googleTaskListId, googleTaskId])
+}
+
+/// ---------------------------------------------------------------------------
+/// Notion
+/// ---------------------------------------------------------------------------
+
+model NotionConnection {
+  id            String    @id @default(cuid())
+  method        String    @default("oauth") // oauth | token | demo
+  workspaceId   String    @unique
+  workspaceName String
+  workspaceIcon String?
+  /// Encrypted access token (OAuth) or internal integration secret.
+  accessToken   String?
+  /// "Me" in that workspace: pages that mention or assign this user are imported.
+  userId        String
+  userName      String?
+  userEmail     String?
+  status        String    @default("OK") // OK | ERROR
+  lastError     String?
+  /// Pages edited after this are looked at on the next sync.
+  lastSyncedAt  DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model SyncRun {
+  id         String    @id @default(cuid())
+  kind       String // google | notion
+  status     String    @default("RUNNING") // RUNNING | SUCCESS | ERROR
+  message    String?
+  imported   Int       @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+/// ---------------------------------------------------------------------------
+/// Possible tasks found in email
+/// ---------------------------------------------------------------------------
+
+/// One analyzed email. Messages that need nothing from you are kept as "none"/"skipped" so they're
+/// never analyzed twice; only "pending" rows show on Today.
+model EmailSuggestion {
+  id         String          @id @default(cuid())
+  accountId  String
+  account    CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messageId  String
+  threadId   String
+  fromName   String?
+  fromEmail  String
+  subject    String
+  snippet    String?
+  receivedAt DateTime
+  /// pending (shown) | accepted (became a task) | dismissed | none (no action) | skipped (marketing/automated)
+  status     String          @default("pending")
+  /// The suggested task.
+  title      String?
+  /// Why it needs you, in a few words ("Asks you to approve the budget").
+  reason     String?
+  dueDate    String? // YYYY-MM-DD
+  priority   Int             @default(0)
+  /// claude | rules — what found it.
+  source     String          @default("rules")
+  taskId     String?
+  createdAt  DateTime        @default(now())
+
+  @@unique([accountId, messageId])
+  @@index([status, receivedAt])
+}
+
+/// ---------------------------------------------------------------------------
+/// Daily stoic thought and Bible verse — the ones you saved
+/// ---------------------------------------------------------------------------
+
+model SavedQuote {
+  id        String   @id @default(cuid())
+  kind      String // stoic | verse
+  /// Id of the quote in lib/daily-content.ts.
+  key       String
+  /// Copied when saved, so the list stays intact if the built-in list changes.
+  text      String
+  /// Author (stoic) or reference (verse), e.g. "Marcus Aurelius" / "Isaiah 40:31".
+  source    String
+  /// Work or translation, e.g. "Meditations 5.20" / "KJV".
+  detail    String?
+  theme     String?
+  createdAt DateTime @default(now())
+
+  @@unique([kind, key])
+}
+
+/// ---------------------------------------------------------------------------
+/// Habits — a checklist for today, streaks and history
+/// ---------------------------------------------------------------------------
+
+model Habit {
+  id            String       @id @default(cuid())
+  name          String
+  emoji         String?
+  /// Palette key from lib/colors.ts (PROJECT_COLORS).
+  color         String       @default("green")
+  /// Goal: days per week (7 = every day).
+  targetPerWeek Int          @default(7)
+  position      Float        @default(0)
+  /// Archived habits leave the checklist but keep their history.
+  archived      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  checks        HabitCheck[]
+}
+
+/// One day a habit was done (YYYY-MM-DD in APP_TIMEZONE).
+model HabitCheck {
+  id        String   @id @default(cuid())
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  day       String
+  createdAt DateTime @default(now())
+
+  @@unique([habitId, day])
+  @@index([day])
+}
+
+/// ---------------------------------------------------------------------------
+/// Bible in a year (plan start date is the Setting "biblePlanStart")
+/// ---------------------------------------------------------------------------
+
+/// A plan day (1–365) you marked as read.
+model BibleDay {
+  day    Int      @id
+  readAt DateTime @default(now())
+}
+
+
+/// A folder of notes (one level; deleting it moves its notes to "No folder").
+model NoteFolder {
+  id        String   @id @default(cuid())
+  name      String
+  position  Float    @default(0)
+  createdAt DateTime @default(now())
+  notes     Note[]
+}
+
+/// A note written in Markdown. Listed by `updatedAt` (last edited or added first).
+model Note {
+  id        String      @id @default(cuid())
+  title     String      @default("")
+  body      String      @default("")
+  folderId  String?
+  folder    NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  /// Lowercase, without "#".
+  tags      String[]    @default([])
+  pinned    Boolean     @default(false)
+  /// Palette key from lib/colors.ts (PROJECT_COLORS); null = plain.
+  color     String?
+  /// Project / calendar event made from this note.
+  projectId String?
+  project   Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  eventId   String?
+  event     Event?      @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([updatedAt])
+}

@@ -1,0 +1,43 @@
+{
+  "name": "lud-worklife",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal productivity dashboard: projects as Kanban boards, tasks you drag onto the calendar, several Google calendars in their own colors, and Notion pages where you're mentioned imported automatically.",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/with-db.mjs next dev",
+    "dev:next": "next dev",
+    "build": "prisma generate && node scripts/migrate.mjs && next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "node scripts/with-db.mjs prisma studio",
+    "sync": "tsx scripts/sync.ts",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@prisma/client": "6.19.3",
+    "lucide-react": "1.66.0",
+    "next": "15.5.28",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.15.0",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "embedded-postgres": "17.10.0-beta.17",
+    "prisma": "6.19.3",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
