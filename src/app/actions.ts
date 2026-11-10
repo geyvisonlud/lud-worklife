@@ -550,6 +550,10 @@ export async function noteToEvent(id: string, input: { calendarId: string; date:
   const e = noteEvent(n, { date: input.date, time: input.time, durationMin: Number(input.durationMin) || 60, tz }, zonedToUtc, process.env.APP_URL);
   try {
     const ev = await insertEvent(cal, e.google, { title: e.title, description: e.description ?? null, start: e.start, end: e.end, allDay: e.allDay });
+    if (!cal.visible) {
+      await prisma.calendar.update({ where: { id: cal.id }, data: { visible: true } });
+      if (cal.account.provider === "google") await syncAccount(cal.accountId).catch(() => {});
+    }
     await prisma.note.update({ where: { id }, data: { eventId: ev.id } });
     return done(`Added to ${cal.name}`);
   } catch (err) {
@@ -589,14 +593,32 @@ export async function createEvent(input: EventInput): Promise<ActionResult> {
   if (!isYmd(input.date)) return fail("Pick a day.");
   const cal = await writableCalendar(input.calendarId);
   if (!cal) return fail("Pick a calendar you can add events to.");
+  const e = eventFromInput(input);
+  if (!e) return fail("Pick a start and end time.");
+  try {
+    await insertEvent(cal, e.google, e.row);
+    // Events of hidden calendars aren't shown here — show the calendar you just added to.
+    if (!cal.visible) {
+      await prisma.calendar.update({ where: { id: cal.id }, data: { visible: true } });
+      if (cal.account.provider === "google") await syncAccount(cal.accountId).catch(() => {});
+      return done(`Added to ${cal.name} — that calendar was hidden here, so it's shown now`);
+    }
+    return done(`Added to ${cal.name}`);
+  } catch (err) {
+    return fail(`Couldn't add the event: ${(err as Error).message}`);
+  }
+}
+
+function eventFromInput(input: Omit<EventInput, "calendarId">) {
   const toMin = (t: string) => {
     const m = /^(\d{1,2}):(\d{2})$/.exec(t ?? "");
     return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
   };
   const startMin = toMin(input.start);
   const endMin = toMin(input.end);
-  if (!input.allDay && (Number.isNaN(startMin) || Number.isNaN(endMin))) return fail("Pick a start and end time.");
-  const e = buildEvent(
+  if (!isYmd(input.date)) return null;
+  if (!input.allDay && (Number.isNaN(startMin) || Number.isNaN(endMin))) return null;
+  return buildEvent(
     {
       title: clean(input.title, 300),
       date: input.date,
@@ -610,10 +632,45 @@ export async function createEvent(input: EventInput): Promise<ActionResult> {
     appTimeZone(),
     zonedToUtc,
   );
+}
+
+/** Edit an event: in Google too for Google calendars (a repeating event's occurrence changes on its own). */
+export async function updateEvent(id: string, input: Omit<EventInput, "calendarId">): Promise<ActionResult> {
+  const ev = await prisma.event.findUnique({ where: { id }, include: { calendar: { include: { account: true } } } });
+  if (!ev) return fail("That event is gone — it may have been deleted in Google.");
+  if (!ev.calendar.canWrite) return fail("This calendar is read-only.");
+  const e = eventFromInput(input);
+  if (!e) return fail("Pick a day, and a start and end time.");
   try {
-    await insertEvent(cal, e.google, e.row);
-    return done(`Added to ${cal.name}`);
+    if (ev.calendar.account.provider === "google") {
+      const token = await accessToken(ev.calendar.account);
+      // null clears what was removed here (location / description)
+      const body = { ...e.google, location: e.google.location ?? null, description: e.google.description ?? null };
+      await googleApi(token, `/calendars/${encodeURIComponent(ev.calendar.externalId)}/events/${encodeURIComponent(ev.externalId)}`, { method: "PATCH", body });
+    }
+    await prisma.event.update({ where: { id }, data: e.row });
+    return done("Event updated");
   } catch (err) {
-    return fail(`Couldn't add the event: ${(err as Error).message}`);
+    return fail(`Couldn't update the event: ${(err as Error).message}`);
+  }
+}
+
+/** Delete an event (in Google too). For a repeating event only this occurrence is removed. */
+export async function deleteEvent(id: string): Promise<ActionResult> {
+  const ev = await prisma.event.findUnique({ where: { id }, include: { calendar: { include: { account: true } } } });
+  if (!ev) return done();
+  if (!ev.calendar.canWrite) return fail("This calendar is read-only.");
+  try {
+    if (ev.calendar.account.provider === "google") {
+      const token = await accessToken(ev.calendar.account);
+      await googleApi(token, `/calendars/${encodeURIComponent(ev.calendar.externalId)}/events/${encodeURIComponent(ev.externalId)}`, { method: "DELETE" }).catch((err: Error) => {
+        // Already gone in Google: just remove it here.
+        if (!/not found|deleted|410|404/i.test(err.message)) throw err;
+      });
+    }
+    await prisma.event.delete({ where: { id } });
+    return done("Event deleted");
+  } catch (err) {
+    return fail(`Couldn't delete the event: ${(err as Error).message}`);
   }
 }

@@ -70,6 +70,9 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   calendar, last used remembered in localStorage `lw:last-calendar`; `createEvent` → Google for Google calendars + a local Event row
   so it shows before the next sync; times built by `buildEvent` in lib/events.ts) or Task (time block / due day). "New" in the
   toolbar does the same; double-click a day header for an all-day event.
+  Adding to a calendar that's hidden here turns it on (otherwise the event wouldn't show). Click an event → Edit (same sheet,
+  calendar locked) → `updateEvent` (PATCH in Google) or delete → `deleteEvent`; only on writable calendars; for a repeating event
+  only that occurrence changes.
 - Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).

@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Inbox, MapPin, Plus, RefreshCw, Video } from "lucide-react";
-import { createEvent, createTask, scheduleTask, setCalendarVisible, syncCalendarsNow, syncIfStale } from "@/app/actions";
+import { CalendarPlus, CheckCircle2, Pencil, Trash2, ChevronLeft, ChevronRight, ExternalLink, Inbox, MapPin, Plus, RefreshCw, Video } from "lucide-react";
+import { createEvent, createTask, deleteEvent, updateEvent, scheduleTask, setCalendarVisible, syncCalendarsNow, syncIfStale } from "@/app/actions";
 import { dragRange, hm } from "@/lib/events";
 import { layoutDay, clipToDay } from "@/lib/calendar-layout";
 import { projectColor } from "@/lib/colors";
@@ -60,6 +60,7 @@ export function CalendarView({
   /** Live selection while dragging on an empty part of a day, and the "new event / task" sheet it opens. */
   const [draft, setDraft] = useState<{ day: string; start: number; end: number } | null>(null);
   const [create, setCreate] = useState<NewItem | null>(null);
+  const [editing, setEditing] = useState<EventDTO | null>(null);
   const pointerKind = useRef<string>("mouse");
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => setLocal(tasks), [tasks]);
@@ -519,8 +520,26 @@ export function CalendarView({
         </div>
       </section>
 
-      <EventSheet event={openEvent} calendars={calendars} onClose={() => setOpenEvent(null)} tz={tz} />
+      <EventSheet
+        event={openEvent}
+        calendars={calendars}
+        onClose={() => setOpenEvent(null)}
+        tz={tz}
+        onEdit={(ev) => {
+          setOpenEvent(null);
+          setEditing(ev);
+        }}
+      />
       {create && <NewItemSheet key={`${create.day}-${create.start}-${create.allDay}`} item={create} calendars={calendars.filter((c) => c.canWrite)} onClose={() => setCreate(null)} />}
+      {editing && (
+        <NewItemSheet
+          key={editing.id}
+          item={eventItem(editing, tz)}
+          editing={editing}
+          calendars={calendars.filter((c) => c.canWrite || c.id === editing.calendarId)}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
@@ -574,7 +593,7 @@ function CalendarToggle({ cal }: { cal: CalendarDTO }) {
   );
 }
 
-function EventSheet({ event, calendars, onClose, tz }: { event: EventDTO | null; calendars: CalendarDTO[]; onClose: () => void; tz: string }) {
+function EventSheet({ event, calendars, onClose, onEdit, tz }: { event: EventDTO | null; calendars: CalendarDTO[]; onClose: () => void; onEdit: (e: EventDTO) => void; tz: string }) {
   const cal = event ? calendars.find((c) => c.id === event.calendarId) : null;
   let when = "";
   if (event) {
@@ -614,6 +633,11 @@ function EventSheet({ event, calendars, onClose, tz }: { event: EventDTO | null;
                 <Video size={14} /> Join meeting
               </a>
             )}
+            {cal?.canWrite && (
+              <button className="btn btn-secondary" onClick={() => onEdit(event)}>
+                <Pencil size={13} /> Edit
+              </button>
+            )}
             {event.htmlLink && (
               <a href={event.htmlLink} target="_blank" rel="noreferrer" className="btn btn-secondary">
                 Open in Google Calendar <ExternalLink size={12} className="text-ink-3" />
@@ -630,27 +654,51 @@ type NewItem = { day: string; start: number; end: number; allDay: boolean };
 const LAST_CAL = "lw:last-calendar";
 
 /** "New" from the calendar: an event (default) in one of your calendars, or a task with a time block. */
-function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: CalendarDTO[]; onClose: () => void }) {
+/** An existing event as the sheet's starting values (all-day ends are exclusive in Google). */
+function eventItem(e: EventDTO, tz: string): NewItem & { endDay: string } {
+  if (e.allDay) {
+    const day = e.start.slice(0, 10);
+    const last = addDays(e.end.slice(0, 10), -1);
+    return { day, start: 9 * 60, end: 10 * 60, allDay: true, endDay: last >= day ? last : day };
+  }
+  const s = new Date(e.start);
+  const en = new Date(e.end);
+  const day = ymdInTz(s, tz);
+  return { day, start: minutesInTz(s, tz), end: ymdInTz(en, tz) === day ? minutesInTz(en, tz) : minutesInTz(en, tz) || 1440, allDay: false, endDay: day };
+}
+
+const plain = (html: string | null) =>
+  (html ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .trim();
+
+function NewItemSheet({ item, editing, calendars, onClose }: { item: NewItem & { endDay?: string }; editing?: EventDTO; calendars: CalendarDTO[]; onClose: () => void }) {
   const { tz, openTask } = useWork();
   const report = useReport();
   const router = useRouter();
   const [kind, setKind] = useState<"event" | "task">("event");
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [day, setDay] = useState(item.day);
   const [allDay, setAllDay] = useState(item.allDay);
-  const [endDay, setEndDay] = useState(item.day);
+  const [endDay, setEndDay] = useState(item.endDay ?? item.day);
   const [start, setStart] = useState(hm(item.start));
   const [end, setEnd] = useState(hm(item.end));
-  const [location, setLocation] = useState("");
-  const [notes, setNotes] = useState("");
+  const [location, setLocation] = useState(editing?.location ?? "");
+  const [notes, setNotes] = useState(plain(editing?.description ?? null));
   const [calendarId, setCalendarId] = useState(() => {
+    if (editing) return editing.calendarId;
     let last: string | null = null;
     try {
       last = localStorage.getItem(LAST_CAL);
     } catch {
       /* private mode */
     }
-    return calendars.find((c) => c.id === last)?.id ?? calendars.find((c) => c.primary)?.id ?? calendars[0]?.id ?? "";
+    return calendars.find((c) => c.id === last)?.id ?? calendars.find((c) => c.primary && c.visible)?.id ?? calendars.find((c) => c.visible)?.id ?? calendars[0]?.id ?? "";
   });
   const [pending, startSave] = useTransition();
   const toMin = (t: string) => {
@@ -670,7 +718,8 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
         } catch {
           /* private mode */
         }
-        const r = await createEvent({ calendarId, title, date: day, allDay, start, end, endDate: endDay, location, description: notes });
+        const input = { title, date: day, allDay, start, end, endDate: endDay, location, description: notes };
+        const r = editing ? await updateEvent(editing.id, input) : await createEvent({ calendarId, ...input });
         if (report(r)) (onClose(), router.refresh());
       } else {
         const r = await createTask({
@@ -684,7 +733,7 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
 
   const cal = calendars.find((c) => c.id === calendarId);
   return (
-    <Sheet open onClose={onClose} title={kind === "event" ? "New event" : "New task"}>
+    <Sheet open onClose={onClose} title={editing ? "Edit event" : kind === "event" ? "New event" : "New task"}>
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -692,6 +741,7 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
           save();
         }}
       >
+{!editing && (
         <div className="seg-sm w-full" role="group" aria-label="Create">
           <button type="button" aria-pressed={kind === "event"} onClick={() => setKind("event")} className="flex-1">
             <CalendarPlus size={13} className="mr-1 inline" /> Event
@@ -700,6 +750,7 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
             <CheckCircle2 size={13} className="mr-1 inline" /> Task
           </button>
         </div>
+        )}
         <input
           autoFocus
           value={title}
@@ -714,10 +765,11 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
             <Field label="Calendar">
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full" style={{ background: cal?.color }} />
-                <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)} className="input !pl-8 !text-[14px]">
-                  {calendars.map((c) => (
+                <select value={calendarId} disabled={Boolean(editing)} onChange={(e) => setCalendarId(e.target.value)} className="input !pl-8 !text-[14px] disabled:opacity-70">
+                  {[...calendars].sort((a, b) => Number(b.visible) - Number(a.visible)).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} · {c.accountEmail}
+                      {c.visible ? "" : " (hidden here)"}
                     </option>
                   ))}
                 </select>
@@ -763,8 +815,27 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={kind === "event" ? "Description" : "Notes"} aria-label="Notes" rows={2} className="input !text-[14px]" />
         <div className="flex items-center gap-2">
           <button className="btn btn-primary flex-1" disabled={pending || (kind === "event" && !calendarId)}>
-            {pending ? "Saving…" : kind === "event" ? "Add event" : "Add task"}
+            {pending ? "Saving…" : editing ? "Save changes" : kind === "event" ? "Add event" : "Add task"}
           </button>
+          {editing &&
+            (confirmDelete ? (
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={pending}
+                onClick={() =>
+                  startSave(async () => {
+                    if (report(await deleteEvent(editing.id))) (onClose(), router.refresh());
+                  })
+                }
+              >
+                Delete event
+              </button>
+            ) : (
+              <button type="button" className="btn btn-secondary" aria-label="Delete event" title="Delete event" onClick={() => setConfirmDelete(true)}>
+                <Trash2 size={15} />
+              </button>
+            ))}
           {kind === "task" && (
             <button
               type="button"
@@ -778,6 +849,7 @@ function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: 
             </button>
           )}
         </div>
+        {kind === "event" && cal && !cal.visible && !editing && <p className="text-[12px] text-warn">{cal.name} is hidden on this calendar — it will be turned on so you can see the event.</p>}
         {kind === "event" && cal && !allDay && (
           <p className="text-[12px] text-ink-3">
             {formatDay(day, { long: true })} · {formatClockRange(toMin(start), toMin(end))} · {cal.name}

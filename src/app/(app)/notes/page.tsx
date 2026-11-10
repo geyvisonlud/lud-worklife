@@ -34,7 +34,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
           filter={{ q, folder: sp.folder, tag: sp.tag }}
           total={total}
           unfiled={unfiled}
-          calendars={calendars.filter((c) => c.canWrite).map((c) => ({ id: c.id, label: `${c.name} · ${c.accountEmail}`, color: c.color }))}
+          calendars={calendars.filter((c) => c.canWrite).map((c) => ({ id: c.id, label: `${c.name} · ${c.accountEmail}${c.visible ? "" : " (hidden here)"}`, color: c.color }))}
         />
       </Suspense>
     </div>
