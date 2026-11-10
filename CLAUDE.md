@@ -65,6 +65,11 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   list · editor) and boxes (masonry cards; on desktop the note opens over them, Esc closes). `Note.color` is a PROJECT_COLORS key
   (tinted card/editor via `noteTint`). "Make it a project" (`noteToProject`, sets `Note.projectId`) and "Add to calendar…"
   (`noteToEvent`: any writable calendar; Google calendars get the event in Google too; `noteEvent` in lib/notes.ts builds it).
+- Calendar: drag with the mouse on an empty part of a day to select start → end (`dragRange`, 15-min snap; a plain click = 1 h
+  at the half hour; a tap on phones does the same, touch-drag scrolls). It opens `NewItemSheet` — **Event by default** (writable
+  calendar, last used remembered in localStorage `lw:last-calendar`; `createEvent` → Google for Google calendars + a local Event row
+  so it shows before the next sync; times built by `buildEvent` in lib/events.ts) or Task (time block / due day). "New" in the
+  toolbar does the same; double-click a day header for an all-day event.
 - Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).

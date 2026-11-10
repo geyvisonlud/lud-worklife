@@ -20,6 +20,7 @@ import { scanAllEmail } from "@/lib/email-sync";
 import { findQuote, isQuoteKind } from "@/lib/daily";
 import { PLAN_DAYS } from "@/lib/bible-plan";
 import { normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
+import { buildEvent } from "@/lib/events";
 import { listNotes, type NoteDTO } from "@/lib/notes-data";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -548,18 +549,69 @@ export async function noteToEvent(id: string, input: { calendarId: string; date:
   const tz = appTimeZone();
   const e = noteEvent(n, { date: input.date, time: input.time, durationMin: Number(input.durationMin) || 60, tz }, zonedToUtc, process.env.APP_URL);
   try {
-    let externalId = `note-${n.id}-${Date.now()}`;
-    let htmlLink: string | null = null;
-    if (cal.account.provider === "google") {
-      const token = await accessToken(cal.account);
-      const created = await googleApi<{ id: string; htmlLink?: string }>(token, `/calendars/${encodeURIComponent(cal.externalId)}/events`, { method: "POST", body: e.google });
-      externalId = created.id;
-      htmlLink = created.htmlLink ?? null;
-    }
-    const ev = await prisma.event.create({
-      data: { calendarId: cal.id, externalId, title: e.title, description: e.description ?? null, start: e.start, end: e.end, allDay: e.allDay, htmlLink },
-    });
+    const ev = await insertEvent(cal, e.google, { title: e.title, description: e.description ?? null, start: e.start, end: e.end, allDay: e.allDay });
     await prisma.note.update({ where: { id }, data: { eventId: ev.id } });
+    return done(`Added to ${cal.name}`);
+  } catch (err) {
+    return fail(`Couldn't add the event: ${(err as Error).message}`);
+  }
+}
+
+/* ---------------------------------------------------------------- events */
+
+type WritableCalendar = NonNullable<Awaited<ReturnType<typeof writableCalendar>>>;
+async function writableCalendar(id: string) {
+  const cal = await prisma.calendar.findUnique({ where: { id }, include: { account: true } });
+  return cal?.canWrite ? cal : null;
+}
+
+/** Creates the event in Google (for Google calendars) and stores it here right away, so it shows before the next sync. */
+async function insertEvent(
+  cal: WritableCalendar,
+  google: Record<string, unknown>,
+  row: { title: string; description: string | null; location?: string | null; start: Date; end: Date; allDay: boolean },
+) {
+  let externalId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let htmlLink: string | null = null;
+  if (cal.account.provider === "google") {
+    const token = await accessToken(cal.account);
+    const created = await googleApi<{ id: string; htmlLink?: string }>(token, `/calendars/${encodeURIComponent(cal.externalId)}/events`, { method: "POST", body: google });
+    externalId = created.id;
+    htmlLink = created.htmlLink ?? null;
+  }
+  return prisma.event.create({ data: { calendarId: cal.id, externalId, htmlLink, location: row.location ?? null, ...row } });
+}
+
+export type EventInput = { calendarId: string; title: string; date: string; allDay: boolean; start: string; end: string; endDate?: string; location?: string; description?: string };
+
+/** New event from the calendar (drag on the grid, or "New"). Times are "HH:MM" in the app's time zone. */
+export async function createEvent(input: EventInput): Promise<ActionResult> {
+  if (!isYmd(input.date)) return fail("Pick a day.");
+  const cal = await writableCalendar(input.calendarId);
+  if (!cal) return fail("Pick a calendar you can add events to.");
+  const toMin = (t: string) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t ?? "");
+    return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+  };
+  const startMin = toMin(input.start);
+  const endMin = toMin(input.end);
+  if (!input.allDay && (Number.isNaN(startMin) || Number.isNaN(endMin))) return fail("Pick a start and end time.");
+  const e = buildEvent(
+    {
+      title: clean(input.title, 300),
+      date: input.date,
+      allDay: Boolean(input.allDay),
+      startMin,
+      endMin,
+      endDate: isYmd(input.endDate) ? input.endDate : undefined,
+      location: clean(input.location, 300),
+      description: typeof input.description === "string" ? input.description.slice(0, 8000) : "",
+    },
+    appTimeZone(),
+    zonedToUtc,
+  );
+  try {
+    await insertEvent(cal, e.google, e.row);
     return done(`Added to ${cal.name}`);
   } catch (err) {
     return fail(`Couldn't add the event: ${(err as Error).message}`);

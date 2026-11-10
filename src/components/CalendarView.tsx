@@ -3,15 +3,16 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, ExternalLink, Inbox, MapPin, RefreshCw, Video } from "lucide-react";
-import { scheduleTask, setCalendarVisible, syncCalendarsNow, syncIfStale } from "@/app/actions";
+import { CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Inbox, MapPin, Plus, RefreshCw, Video } from "lucide-react";
+import { createEvent, createTask, scheduleTask, setCalendarVisible, syncCalendarsNow, syncIfStale } from "@/app/actions";
+import { dragRange, hm } from "@/lib/events";
 import { layoutDay, clipToDay } from "@/lib/calendar-layout";
 import { projectColor } from "@/lib/colors";
 import { addDays, dayShort, wallMinutes, formatClock, formatClockRange, formatDay, formatRange, minutesInTz, snapMinutes, ymdInTz, zonedToUtc } from "@/lib/dates";
 import type { CalendarDTO, EventDTO, TaskDTO } from "@/lib/data";
 import { compareTasks } from "@/lib/tasks";
 import { dragState } from "./dragState";
-import { Sheet } from "./Sheet";
+import { Field, Sheet } from "./Sheet";
 import { QuickAdd, TaskCheck, TaskRow } from "./TaskBits";
 import { useReport, useWork } from "./TaskSheet";
 import { GoogleMark } from "./ui";
@@ -56,6 +57,10 @@ export function CalendarView({
   const [, start] = useTransition();
   const [now, setNow] = useState(() => new Date());
   const [showTray, setShowTray] = useState(false);
+  /** Live selection while dragging on an empty part of a day, and the "new event / task" sheet it opens. */
+  const [draft, setDraft] = useState<{ day: string; start: number; end: number } | null>(null);
+  const [create, setCreate] = useState<NewItem | null>(null);
+  const pointerKind = useRef<string>("mouse");
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => setLocal(tasks), [tasks]);
 
@@ -167,6 +172,39 @@ export function CalendarView({
     window.addEventListener("pointerup", up);
   };
 
+  /* ------------------------------------------- drag on the grid to create */
+  const startSelect = (day: string) => (e: React.PointerEvent<HTMLDivElement>) => {
+    pointerKind.current = e.pointerType;
+    // Touch scrolls the grid; a tap opens the sheet instead (onClick below).
+    if (e.pointerType === "touch" || e.button !== 0 || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    const top = el.getBoundingClientRect().top;
+    const from = (e.clientY - top) / PX_PER_MIN;
+    let range = dragRange(from, from + 1);
+    let moved = false;
+    setDraft({ day, ...range });
+    const move = (ev: PointerEvent) => {
+      const to = (ev.clientY - el.getBoundingClientRect().top) / PX_PER_MIN;
+      if (Math.abs(to - from) > 4) moved = true;
+      range = dragRange(from, to);
+      setDraft({ day, ...range });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDraft(null);
+      // A click without dragging makes a one-hour slot starting at the half hour clicked.
+      if (!moved) {
+        const s = Math.min(23 * 60, Math.floor(from / 30) * 30);
+        range = { start: s, end: s + 60 };
+      }
+      setCreate({ day, start: range.start, end: range.end, allDay: false });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   /* -------------------------------------------------------------- render */
   const step = view === "week" ? 7 : view === "3day" ? 3 : 1;
   const href = (date: string, v: CalView = view) => `/calendar?view=${v}&date=${date}`;
@@ -256,6 +294,16 @@ export function CalendarView({
           </div>
           <h2 className="text-[15px] font-medium tracking-[-0.01em]">{view === "day" ? formatDay(days[0], { long: true, year: true }) : formatRange(days[0], days[days.length - 1])}</h2>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              className="btn btn-primary !px-2.5 !py-1.5 !text-[13px]"
+              onClick={() => {
+                const d = days.includes(today) ? today : days[0];
+                const s = d === today ? Math.min(23 * 60, Math.ceil(minutesInTz(new Date(), tz) / 30) * 30) : 9 * 60;
+                setCreate({ day: d, start: s, end: Math.min(1440, s + 60), allDay: false });
+              }}
+            >
+              <Plus size={14} /> New
+            </button>
             <div className="seg-sm" role="group" aria-label="View">
               {(["day", "3day", "week"] as const).map((v) => (
                 <button key={v} aria-pressed={view === v} onClick={() => router.push(href(anchor, v))}>
@@ -282,7 +330,15 @@ export function CalendarView({
               {perDay.map(({ day, allDay, due }) => {
                 const isToday = day === today;
                 return (
-                  <div key={day} className="min-w-0 border-l border-hairline px-1 pb-1.5 pt-2">
+                  <div
+                    key={day}
+                    className="min-w-0 cursor-default border-l border-hairline px-1 pb-1.5 pt-2"
+                    onDoubleClick={(e) => {
+                      if ((e.target as HTMLElement).closest("button,[draggable=true]")) return;
+                      setCreate({ day, start: 9 * 60, end: 10 * 60, allDay: true });
+                    }}
+                    title="Double-click for an all-day event"
+                  >
                     <div className="mb-1 flex items-baseline justify-center gap-1.5">
                       <span className={`label-mono !text-[10px] ${isToday ? "!text-accent" : ""}`}>{dayShort(day)}</span>
                       <span className={`num inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-[16px] font-medium ${isToday ? "bg-accent text-white" : ""}`}>
@@ -345,10 +401,12 @@ export function CalendarView({
                       if (!e.currentTarget.contains(e.relatedTarget as Node)) setGhost((g) => (g?.day === day ? null : g));
                     }}
                     onDrop={onDayDrop(day)}
+                    onPointerDown={startSelect(day)}
                     onClick={(e) => {
-                      if (e.target !== e.currentTarget) return;
-                      const s = snapMinutes(minuteAt(e, e.currentTarget) - 15, 30);
-                      openTask(null, { scheduledStart: zonedToUtc(day, s, tz).toISOString(), durationMin: defaultDuration });
+                      // Mouse and pen are handled by the drag (startSelect); this is the tap on phones.
+                      if (pointerKind.current !== "touch" || e.target !== e.currentTarget) return;
+                      const s = Math.min(23 * 60, Math.floor(minuteAt(e, e.currentTarget) / 30) * 30);
+                      setCreate({ day, start: s, end: s + 60, allDay: false });
                     }}
                   >
                     {blocks.map(({ id, start: s, end, col, cols, block }) => {
@@ -435,6 +493,18 @@ export function CalendarView({
                       </div>
                     )}
 
+                    {(draft?.day === day || (create && !create.allDay && create.day === day)) && (
+                      <div
+                        className="pointer-events-none absolute inset-x-0.5 z-[5] rounded-[6px] border-2 border-accent bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent"
+                        style={{
+                          top: (draft?.day === day ? draft.start : create!.start) * PX_PER_MIN,
+                          height: Math.max(18, ((draft?.day === day ? draft.end - draft.start : create!.end - create!.start) || 60) * PX_PER_MIN),
+                        }}
+                      >
+                        {draft?.day === day ? formatClockRange(draft.start, draft.end) : formatClockRange(create!.start, create!.end)}
+                      </div>
+                    )}
+
                     {day === today && (
                       <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: nowMin * PX_PER_MIN }} aria-hidden>
                         <div className="absolute -left-[5px] -top-[4.5px] h-[9px] w-[9px] rounded-full bg-bad" />
@@ -450,6 +520,7 @@ export function CalendarView({
       </section>
 
       <EventSheet event={openEvent} calendars={calendars} onClose={() => setOpenEvent(null)} tz={tz} />
+      {create && <NewItemSheet key={`${create.day}-${create.start}-${create.allDay}`} item={create} calendars={calendars.filter((c) => c.canWrite)} onClose={() => setCreate(null)} />}
     </div>
   );
 }
@@ -551,6 +622,168 @@ function EventSheet({ event, calendars, onClose, tz }: { event: EventDTO | null;
           </div>
         </div>
       )}
+    </Sheet>
+  );
+}
+
+type NewItem = { day: string; start: number; end: number; allDay: boolean };
+const LAST_CAL = "lw:last-calendar";
+
+/** "New" from the calendar: an event (default) in one of your calendars, or a task with a time block. */
+function NewItemSheet({ item, calendars, onClose }: { item: NewItem; calendars: CalendarDTO[]; onClose: () => void }) {
+  const { tz, openTask } = useWork();
+  const report = useReport();
+  const router = useRouter();
+  const [kind, setKind] = useState<"event" | "task">("event");
+  const [title, setTitle] = useState("");
+  const [day, setDay] = useState(item.day);
+  const [allDay, setAllDay] = useState(item.allDay);
+  const [endDay, setEndDay] = useState(item.day);
+  const [start, setStart] = useState(hm(item.start));
+  const [end, setEnd] = useState(hm(item.end));
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
+  const [calendarId, setCalendarId] = useState(() => {
+    let last: string | null = null;
+    try {
+      last = localStorage.getItem(LAST_CAL);
+    } catch {
+      /* private mode */
+    }
+    return calendars.find((c) => c.id === last)?.id ?? calendars.find((c) => c.primary)?.id ?? calendars[0]?.id ?? "";
+  });
+  const [pending, startSave] = useTransition();
+  const toMin = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m || 0);
+  };
+  const duration = (() => {
+    const d = toMin(end) - toMin(start);
+    return d > 0 ? d : d + 1440;
+  })();
+
+  const save = () =>
+    startSave(async () => {
+      if (kind === "event") {
+        try {
+          localStorage.setItem(LAST_CAL, calendarId);
+        } catch {
+          /* private mode */
+        }
+        const r = await createEvent({ calendarId, title, date: day, allDay, start, end, endDate: endDay, location, description: notes });
+        if (report(r)) (onClose(), router.refresh());
+      } else {
+        const r = await createTask({
+          title: title || "New task",
+          notes: notes || null,
+          ...(allDay ? { dueDate: day } : { scheduledStart: zonedToUtc(day, toMin(start), tz).toISOString(), durationMin: duration }),
+        });
+        if (report(r)) (onClose(), router.refresh());
+      }
+    });
+
+  const cal = calendars.find((c) => c.id === calendarId);
+  return (
+    <Sheet open onClose={onClose} title={kind === "event" ? "New event" : "New task"}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <div className="seg-sm w-full" role="group" aria-label="Create">
+          <button type="button" aria-pressed={kind === "event"} onClick={() => setKind("event")} className="flex-1">
+            <CalendarPlus size={13} className="mr-1 inline" /> Event
+          </button>
+          <button type="button" aria-pressed={kind === "task"} onClick={() => setKind("task")} className="flex-1">
+            <CheckCircle2 size={13} className="mr-1 inline" /> Task
+          </button>
+        </div>
+        <input
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={kind === "event" ? "Event title" : "Task title"}
+          aria-label="Title"
+          className="input !text-[16px] font-medium"
+          maxLength={300}
+        />
+        {kind === "event" &&
+          (calendars.length ? (
+            <Field label="Calendar">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full" style={{ background: cal?.color }} />
+                <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)} className="input !pl-8 !text-[14px]">
+                  {calendars.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} · {c.accountEmail}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </Field>
+          ) : (
+            <p className="text-[13px] text-bad">
+              No calendar you can add events to — connect a Google account in{" "}
+              <Link href="/connections" className="underline">
+                Connections
+              </Link>
+              .
+            </p>
+          ))}
+        <div className={`grid gap-3 ${allDay ? "grid-cols-2" : "sm:grid-cols-2"}`}>
+          <Field label={allDay && kind === "event" ? "From" : "Day"}>
+            <input type="date" required value={day} onChange={(e) => (setDay(e.target.value), endDay < e.target.value && setEndDay(e.target.value))} className="input !text-[14px]" />
+          </Field>
+          {allDay ? (
+            kind === "event" ? (
+              <Field label="To">
+                <input type="date" value={endDay} min={day} onChange={(e) => setEndDay(e.target.value)} className="input !text-[14px]" />
+              </Field>
+            ) : (
+              <div />
+            )
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Start">
+                <input type="time" required value={start} onChange={(e) => setStart(e.target.value)} className="input !px-2 !text-[14px]" />
+              </Field>
+              <Field label="End">
+                <input type="time" required value={end} onChange={(e) => setEnd(e.target.value)} className="input !px-2 !text-[14px]" />
+              </Field>
+            </div>
+          )}
+        </div>
+        <label className="flex items-center justify-between gap-3 text-[14px]">
+          <span>{kind === "event" ? "All day" : "No time block (just due that day)"}</span>
+          <input type="checkbox" className="switch" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+        </label>
+        {kind === "event" && <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location" aria-label="Location" className="input !text-[14px]" />}
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={kind === "event" ? "Description" : "Notes"} aria-label="Notes" rows={2} className="input !text-[14px]" />
+        <div className="flex items-center gap-2">
+          <button className="btn btn-primary flex-1" disabled={pending || (kind === "event" && !calendarId)}>
+            {pending ? "Saving…" : kind === "event" ? "Add event" : "Add task"}
+          </button>
+          {kind === "task" && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                onClose();
+                openTask(null, allDay ? { dueDate: day } : { scheduledStart: zonedToUtc(day, toMin(start), tz).toISOString(), durationMin: duration });
+              }}
+            >
+              More options
+            </button>
+          )}
+        </div>
+        {kind === "event" && cal && !allDay && (
+          <p className="text-[12px] text-ink-3">
+            {formatDay(day, { long: true })} · {formatClockRange(toMin(start), toMin(end))} · {cal.name}
+          </p>
+        )}
+      </form>
     </Sheet>
   );
 }
