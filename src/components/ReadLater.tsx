@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Check, Copy, ExternalLink, FileUp, KeyRound, RotateCcw, Smartphone, Trash2, Undo2 } from "lucide-react";
+import { BookmarkPlus, Check, Copy, ExternalLink, FileUp, KeyRound, RotateCcw, Smartphone, Trash2, Undo2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { addReadLater, deleteReadItem, importReadLater, resetCaptureToken, setReadStatus } from "@/app/actions";
 import { relativeTime } from "@/lib/dates";
 import { SOURCE_LABEL, hostOf, type ReadSource } from "@/lib/read-later";
@@ -14,6 +15,7 @@ const SOURCE_DOT: Record<string, string> = { web: "var(--c1)", instagram: "#d633
 
 export function ReadLater({ items: initial, token: initialToken, appUrl }: { items: ReadItemDTO[]; token: string; appUrl: string }) {
   const report = useReport();
+  const router = useRouter();
   const [items, setItems] = useState(initial);
   const [tab, setTab] = useState<Tab>("unread");
   const [source, setSource] = useState<string>("all");
@@ -21,6 +23,16 @@ export function ReadLater({ items: initial, token: initialToken, appUrl }: { ite
   const [saving, startSave] = useTransition();
   const [, start] = useTransition();
   useEffect(() => setItems(initial), [initial]);
+
+  // "Read Later" bookmark in Chrome (computer): /read-later?add=<page> saves that page, then cleans the address.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const add = p.get("add");
+    if (!add) return;
+    router.replace("/read-later", { scroll: false });
+    startSave(async () => void report(await addReadLater([p.get("title"), add].filter(Boolean).join(" "))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const counts = useMemo(() => ({ unread: items.filter((i) => i.status === "unread").length, read: items.filter((i) => i.status === "read").length, all: items.length }), [items]);
   const sources = useMemo(() => [...new Set(items.map((i) => i.source))], [items]);
@@ -108,6 +120,7 @@ export function ReadLater({ items: initial, token: initialToken, appUrl }: { ite
 
       <aside className="space-y-4">
         <PhoneSetup token={initialToken} appUrl={appUrl} />
+        <Bookmarklet appUrl={appUrl} />
         <ImportBox />
       </aside>
     </div>
@@ -261,7 +274,7 @@ function PhoneSetup({ token: initial, appUrl }: { token: string; appUrl: string 
                 Open <b>Shortcuts</b> → <b>+</b>. Name it <b>Read Later</b>.
               </li>
               <li>
-                Tap <b>ⓘ</b> → turn on <b>Show in Share Sheet</b> (accept URLs, Text, Safari web pages).
+                Tap <b>ⓘ</b> → turn on <b>Show in Share Sheet</b> (accept URLs and Text — works from Chrome, Safari and any app).
               </li>
               <li>
                 Add <b>Get Contents of URL</b>: URL = the address above · Method <b>POST</b> · Headers: <code>Authorization</code> = <code>Bearer </code>+ your key · Request Body <b>JSON</b> with <code>text</code> = <i>Shortcut Input</i>.
@@ -286,6 +299,44 @@ function PhoneSetup({ token: initial, appUrl }: { token: string; appUrl: string 
           </button>
         </>
       )}
+    </section>
+  );
+}
+
+/** A bookmark for Chrome on the computer: one click saves the page you're on. */
+function Bookmarklet({ appUrl }: { appUrl: string }) {
+  const code = `javascript:(()=>{window.open('${appUrl.replace(/\/+$/, "")}/read-later?add='+encodeURIComponent(location.href),'_blank')})()`;
+  const [copied, setCopied] = useState(false);
+  return (
+    <section className="card animate-in">
+      <div className="mb-2 flex items-center gap-2">
+        <BookmarkPlus size={15} className="text-ink-3" />
+        <h2 className="label-mono">Chrome on the computer</h2>
+      </div>
+      <p className="text-[12.5px] text-ink-2">
+        Show the bookmarks bar (<b>⌘⇧B</b> / <b>Ctrl+Shift+B</b>) and drag this button onto it. On any page, click it to save that page here.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        {/* React blocks javascript: links in JSX, so the href is set on the element directly. */}
+        <a
+          ref={(el) => el?.setAttribute("href", code)}
+          onClick={(e) => e.preventDefault()}
+          className="btn btn-primary cursor-grab"
+          title="Drag me to the bookmarks bar"
+        >
+          <BookmarkPlus size={14} /> Read Later
+        </a>
+        <button
+          className="btn btn-ghost !text-[12.5px]"
+          onClick={async () => {
+            await navigator.clipboard.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? <Check size={13} className="text-good" /> : <Copy size={13} />} Copy as URL
+        </button>
+      </div>
     </section>
   );
 }

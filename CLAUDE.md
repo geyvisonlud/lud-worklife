@@ -79,7 +79,8 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 - Read Later (`/read-later`, separate from Notes): `ReadItem` (link with fetched title/description/og:image, or plain text;
   `url` normalized + unique so re-saves don't duplicate; `source` web/instagram/x/youtube/text; `via` phone/app/import; unread/read).
   Phone capture: `POST /api/capture` (excluded from the session middleware) with `Authorization: Bearer <captureToken>` (Setting,
-  created/reset on the page) and JSON/form/text `url`/`text`/`title` — made for an iOS Shortcut in the share sheet. Imports: any
+  created/reset on the page) and JSON/form/text `url`/`text`/`title` — made for an iOS Shortcut in the share sheet (works from
+  Chrome, Safari and any app). Desktop Chrome: a bookmarklet opens `/read-later?add=<url>`, which saves it and cleans the address. Imports: any
   JSON/HTML/text export (Instagram saved_posts.json, Chrome ReadingList Takeout, bookmarks .html) via `extractLinks`. Pure logic and
   tests in `lib/read-later.ts`; I/O (fetchMeta, save, import, token) in `lib/read-later-data.ts`. X bookmarks have no free export.
 - Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Read Later, Habits, Bible, Saved, Connections).
