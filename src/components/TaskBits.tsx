@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { CalendarClock, Clock, Flag, Plus } from "lucide-react";
 import { createTask, toggleTask } from "@/app/actions";
 import { projectColor } from "@/lib/colors";
@@ -142,18 +142,41 @@ export function QuickAdd({ projectId, status, placeholder = "Add a task…", due
       if (report(r)) setValue("");
     });
   };
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => grow(area.current), [value]);
+  // The field grows with what you type (long titles wrap instead of scrolling out of view).
+  const grow = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
   return (
-    <form onSubmit={submit} className="flex items-center gap-2 rounded-[11px] border border-dashed border-[var(--hairline-strong)] px-3 py-1.5 focus-within:border-accent">
-      <Plus size={16} className="shrink-0 text-ink-3" />
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder={placeholder}
-        aria-label="New task"
-        className="min-w-0 flex-1 bg-transparent py-1 text-[14.5px] outline-none placeholder:text-ink-3"
-        disabled={pending}
-      />
-      {value && <span className="hidden text-[11px] text-ink-3 sm:inline">today · tomorrow · !high · 45m</span>}
+    <form onSubmit={submit} className="rounded-[11px] border border-dashed border-[var(--hairline-strong)] px-3 py-1.5 focus-within:border-solid focus-within:border-accent">
+      <div className="flex items-start gap-2">
+        <Plus size={16} className="mt-[7px] shrink-0 text-ink-3" />
+        <textarea
+          ref={area}
+          rows={1}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value.replace(/\n/g, " "));
+            grow(e.target);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+            if (e.key === "Escape") setValue("");
+          }}
+          placeholder={placeholder}
+          aria-label="New task"
+          className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-1 text-[14.5px] leading-[1.4] outline-none placeholder:text-ink-3"
+          style={{ boxShadow: "none" }}
+          disabled={pending}
+        />
+      </div>
+      {value && <div className="pb-0.5 pl-6 text-[11px] text-ink-3">Enter to add · today · tomorrow · !high · 45m</div>}
     </form>
   );
 }
