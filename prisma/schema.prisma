@@ -338,3 +338,24 @@ model Note {
 
   @@index([updatedAt])
 }
+
+/// Something saved to read later: a link (from the phone's share sheet, a paste or an import) or a bit of text.
+model ReadItem {
+  id          String    @id @default(cuid())
+  /// Normalized link; null for saved text. Unique so re-saving or re-importing doesn't duplicate.
+  url         String?   @unique
+  title       String
+  description String?
+  imageUrl    String?
+  siteName    String?
+  /// web | instagram | x | youtube | text
+  source      String    @default("web")
+  /// How it got here: phone | app | import
+  via         String    @default("app")
+  /// unread | read
+  status      String    @default("unread")
+  savedAt     DateTime  @default(now())
+  readAt      DateTime?
+
+  @@index([status, savedAt])
+}

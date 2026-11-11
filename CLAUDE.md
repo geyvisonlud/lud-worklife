@@ -27,7 +27,7 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 
 ## Where things are
 
-- `src/app/(app)/*` — pages: today (`page.tsx`), tasks, calendar, notes, habits, habits/[id], bible, projects, projects/[id], saved, connections
+- `src/app/(app)/*` — pages: today (`page.tsx`), tasks, calendar, notes, read-later, habits, habits/[id], bible, projects, projects/[id], saved, connections
 - `src/app/actions.ts` — all server actions; return `ActionResult` (`{ ok: true, message? } | { ok: false, error }`), shown as toasts by `useReport()`
 - `src/components/TaskSheet.tsx` — `WorkProvider` (tz, today, projects, the single task editor, toasts) — open the editor with `useWork().openTask(task, defaults)`
 - `src/components/Kanban.tsx` — generic board + `ProjectBoard` / `TaskBoard`; `CalendarView.tsx` — grid, tray, drag/resize
@@ -76,7 +76,13 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   Adding to a calendar that's hidden here turns it on (otherwise the event wouldn't show). Click an event → Edit (same sheet,
   calendar locked) → `updateEvent` (PATCH in Google) or delete → `deleteEvent`; only on writable calendars; for a repeating event
   only that occurrence changes.
-- Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Habits, Bible, Saved, Connections).
+- Read Later (`/read-later`, separate from Notes): `ReadItem` (link with fetched title/description/og:image, or plain text;
+  `url` normalized + unique so re-saves don't duplicate; `source` web/instagram/x/youtube/text; `via` phone/app/import; unread/read).
+  Phone capture: `POST /api/capture` (excluded from the session middleware) with `Authorization: Bearer <captureToken>` (Setting,
+  created/reset on the page) and JSON/form/text `url`/`text`/`title` — made for an iOS Shortcut in the share sheet. Imports: any
+  JSON/HTML/text export (Instagram saved_posts.json, Chrome ReadingList Takeout, bookmarks .html) via `extractLinks`. Pure logic and
+  tests in `lib/read-later.ts`; I/O (fetchMeta, save, import, token) in `lib/read-later-data.ts`. X bookmarks have no free export.
+- Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Read Later, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).
   `HabitDock` (floating, all pages except Today and /habits) remembers minimized/open in localStorage (`lw:habit-dock`).

@@ -10,6 +10,8 @@ export const SETTING_KEYS = {
   weekStart: "weekStart",
   /** First day (YYYY-MM-DD) of the Bible-in-a-year plan; empty = not started. */
   biblePlanStart: "biblePlanStart",
+  /** Secret for /api/capture (Read Later from the phone's share sheet); empty = not set up. */
+  captureToken: "captureToken",
 } as const;
 
 export async function getSetting(key: string, fallback = "") {

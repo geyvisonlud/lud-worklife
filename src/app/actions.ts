@@ -21,6 +21,8 @@ import { findQuote, isQuoteKind } from "@/lib/daily";
 import { PLAN_DAYS } from "@/lib/bible-plan";
 import { normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
 import { buildEvent } from "@/lib/events";
+import { extractLinks } from "@/lib/read-later";
+import { importLinks, newCaptureToken, saveToReadLater } from "@/lib/read-later-data";
 import { listNotes, type NoteDTO } from "@/lib/notes-data";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -673,4 +675,40 @@ export async function deleteEvent(id: string): Promise<ActionResult> {
   } catch (err) {
     return fail(`Couldn't delete the event: ${(err as Error).message}`);
   }
+}
+
+/* ------------------------------------------------------------ read later */
+
+export async function addReadLater(text: string): Promise<ActionResult> {
+  const item = await saveToReadLater({ text: clean(text, 20_000), via: "app" });
+  if (!item) return fail("Paste a link or write something to keep.");
+  revalidatePath("/read-later");
+  return done(`Saved: ${item.title}`);
+}
+
+export async function setReadStatus(id: string, read: boolean): Promise<ActionResult> {
+  await prisma.readItem.update({ where: { id }, data: { status: read ? "read" : "unread", readAt: read ? new Date() : null } }).catch(() => null);
+  return done();
+}
+
+export async function deleteReadItem(id: string): Promise<ActionResult> {
+  await prisma.readItem.deleteMany({ where: { id } });
+  return done();
+}
+
+/** Import an export file (Instagram saved_posts.json, Chrome reading list / bookmarks, any file with links). */
+export async function importReadLater(form: FormData): Promise<ActionResult> {
+  const file = form.get("file");
+  if (!(file instanceof File) || !file.size) return fail("Choose a file to import.");
+  if (file.size > 8 * 1024 * 1024) return fail("That file is too big (8 MB max) — export just the saved items.");
+  const links = extractLinks(await file.text());
+  if (!links.length) return fail("No links found in that file.");
+  const r = await importLinks(links.slice(0, 5000));
+  return done(`${r.added} imported${r.skipped ? ` · ${r.skipped} already here` : ""}`);
+}
+
+/** Make (or replace) the secret the phone's shortcut sends with each capture. */
+export async function resetCaptureToken(): Promise<ActionResult & { token?: string }> {
+  const token = await newCaptureToken();
+  return { ...done("New capture key — update it in your Shortcut"), token };
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, BookOpen, Heart, KanbanSquare, LogOut, MoreHorizontal, NotebookPen, PlugZap, Repeat, Sun } from "lucide-react";
+import { CalendarDays, CheckCircle2, BookOpen, Heart, KanbanSquare, LogOut, MoreHorizontal, NotebookPen, BookmarkCheck, PlugZap, Repeat, Sun } from "lucide-react";
 import { logout } from "@/app/actions";
 
 const ITEMS = [
@@ -14,6 +14,7 @@ const ITEMS = [
   { href: "/bible", label: "Bible", icon: BookOpen, group: "Plan", desktopOnly: true },
   { href: "/projects", label: "Projects", icon: KanbanSquare, group: "Work", phoneMore: true },
   { href: "/notes", label: "Notes", icon: NotebookPen, group: "Work" },
+  { href: "/read-later", label: "Read Later", icon: BookmarkCheck, group: "Work", phoneMore: true },
   { href: "/saved", label: "Saved", icon: Heart, group: "Work", desktopOnly: true },
   { href: "/connections", label: "Connections", icon: PlugZap, group: "Settings", phoneMore: true },
 ];
