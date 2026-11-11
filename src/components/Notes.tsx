@@ -8,6 +8,8 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   Bold,
+  ChevronRight,
+  FileText,
   CalendarPlus,
   KanbanSquare,
   LayoutGrid,
@@ -499,7 +501,7 @@ function NoteEditor({
         onChange={(e) => change({ title: e.target.value })}
         placeholder={noteTitle({ title: "", body }) === "Untitled note" ? "Title" : noteTitle({ title: "", body })}
         aria-label="Title"
-        className="mt-3 w-full bg-transparent text-[22px] font-semibold tracking-[-0.02em] outline-none placeholder:text-ink-3"
+        className={`mt-3 w-full bg-transparent font-semibold tracking-[-0.03em] outline-none placeholder:text-ink-3 ${modal ? "text-[36px] leading-tight" : "text-[22px]"}`}
         maxLength={200}
       />
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
@@ -689,56 +691,10 @@ function AddToCalendar({ open, onClose, noteId, calendars }: { open: boolean; on
 
 /* ------------------------------------------------------------- workspace */
 
-function FolderRow({ f, href, active }: { f: FolderDTO; href: string; active: boolean }) {
-  const report = useReport();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(f.name);
-  const [confirm, setConfirm] = useState(false);
-  const [, start] = useTransition();
-  if (editing)
-    return (
-      <form
-        className="flex items-center gap-1 px-1"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setEditing(false);
-          start(async () => void report(await renameFolder(f.id, name)));
-        }}
-      >
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="input !py-1 !text-[13px]" aria-label="Folder name" onBlur={() => setEditing(false)} />
-      </form>
-    );
-  return (
-    <div className="group flex items-center">
-      <Link
-        href={href}
-        aria-current={active ? "page" : undefined}
-        className={`flex min-w-0 flex-1 items-center gap-2 rounded-[8px] px-2.5 py-[6px] text-[13.5px] ${active ? "bg-surface-3 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}
-      >
-        <Folder size={14} className="shrink-0 text-ink-3" />
-        <span className="truncate">{f.name}</span>
-        <span className="num ml-auto text-[11px] text-ink-3">{f.count}</span>
-      </Link>
-      {confirm ? (
-        <button className="btn btn-danger ml-1 !px-2 !py-0.5 !text-[11.5px]" onClick={() => start(async () => void report(await deleteFolder(f.id)))} onBlur={() => setConfirm(false)}>
-          Delete
-        </button>
-      ) : (
-        <span className="ml-0.5 hidden items-center group-hover:flex group-focus-within:flex">
-          <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label={`Rename ${f.name}`} onClick={() => setEditing(true)}>
-            <Pencil size={12} />
-          </button>
-          <button className="rounded p-1 text-ink-3 hover:text-bad" aria-label={`Delete ${f.name}`} onClick={() => setConfirm(true)}>
-            <Trash2 size={12} />
-          </button>
-        </span>
-      )}
-    </div>
-  );
-}
-
 type View = "list" | "grid";
 const VIEW_KEY = "lw:notes-view";
+const TREE_KEY = "lw:notes-tree";
+export type TreeNote = { id: string; title: string; folderId: string | null; pinned: boolean; color: string | null };
 
 export function NotesWorkspace({
   notes: initialNotes,
@@ -749,7 +705,9 @@ export function NotesWorkspace({
   total,
   unfiled,
   calendars,
+  tree,
 }: {
+  tree: TreeNote[];
   notes: NoteDTO[];
   folders: FolderDTO[];
   tags: { tag: string; count: number }[];
@@ -760,6 +718,27 @@ export function NotesWorkspace({
   calendars: NoteCalendar[];
 }) {
   const router = useRouter();
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(["inbox"]));
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TREE_KEY) ?? "null");
+      if (Array.isArray(saved)) setOpenFolders(new Set(saved));
+    } catch {
+      /* private mode */
+    }
+  }, []);
+  const toggleFolder = (id: string) =>
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(TREE_KEY, JSON.stringify([...next]));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
   const pathname = usePathname();
   const params = useSearchParams();
   const report = useReport();
@@ -819,53 +798,6 @@ export function NotesWorkspace({
   const isAll = !filter.folder && !filter.tag;
   const scopeLabel = filter.tag ? `#${filter.tag}` : filter.folder === "none" ? "Inbox" : filter.folder ? (folders.find((f) => f.id === filter.folder)?.name ?? "Folder") : "All notes";
   const navCls = (on: boolean) => `flex items-center gap-2 rounded-[8px] px-2.5 py-[6px] text-[13.5px] ${on ? "bg-surface-3 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`;
-
-  /* desktop sidebar: All notes, Inbox, folders, tags */
-  const sidebar = (
-    <nav className="card animate-in sticky top-6 space-y-4 !p-2.5" aria-label="Folders and tags">
-      <div className="flex flex-col gap-px">
-        <Link href={url({ folder: undefined, tag: undefined, n: undefined })} aria-current={isAll ? "page" : undefined} className={navCls(isAll)}>
-          <Rows3 size={14} className="shrink-0 text-ink-3" /> All notes <span className="num ml-auto text-[11px] text-ink-3">{total}</span>
-        </Link>
-        <Link href={url({ folder: "none", tag: undefined, n: undefined })} aria-current={filter.folder === "none" ? "page" : undefined} className={navCls(filter.folder === "none")}>
-          <Inbox size={14} className="shrink-0 text-ink-3" /> Inbox <span className="num ml-auto text-[11px] text-ink-3">{unfiled}</span>
-        </Link>
-      </div>
-      <div>
-        <div className="mb-1 flex items-center justify-between pl-2.5">
-          <span className="section-label !mb-0">Folders</span>
-          <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label="New folder" title="New folder" onClick={() => setNewFolder("")}>
-            <FolderPlus size={14} />
-          </button>
-        </div>
-        {newFolder !== null && (
-          <form className="mb-1 px-1" onSubmit={(e) => (e.preventDefault(), addFolder(newFolder))}>
-            <input autoFocus value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onBlur={() => !newFolder.trim() && setNewFolder(null)} placeholder="Folder name" className="input !py-1 !text-[13px]" aria-label="New folder name" />
-          </form>
-        )}
-        {folders.map((f) => (
-          <FolderRow key={f.id} f={f} href={url({ folder: f.id, tag: undefined, n: undefined })} active={filter.folder === f.id} />
-        ))}
-        {!folders.length && newFolder === null && (
-          <button className="px-2.5 text-left text-[12px] text-ink-3 hover:text-ink" onClick={() => setNewFolder("")}>
-            No folders yet — add one
-          </button>
-        )}
-      </div>
-      {tags.length > 0 && (
-        <div>
-          <div className="section-label mb-1 px-2.5">Tags</div>
-          <div className="flex flex-wrap gap-1 px-1.5 pb-1">
-            {tags.map((t) => (
-              <Link key={t.tag} href={url({ tag: filter.tag === t.tag ? undefined : t.tag, folder: undefined, n: undefined })} className="chip !text-[12px]" aria-pressed={filter.tag === t.tag}>
-                #{t.tag} <span className="text-ink-3">{t.count}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </nav>
-  );
 
   const viewToggle = (
     <div className="flex shrink-0 rounded-[9px] bg-surface-2 p-0.5" role="group" aria-label="View">
@@ -937,7 +869,7 @@ export function NotesWorkspace({
       folders={folders}
       calendars={calendars}
       backHref={url({ n: undefined })}
-      modal={view === "grid" && desktop}
+      modal={desktop}
       onChange={(n) => setNotes((l) => (l.some((x) => x.id === n.id) ? l.map((x) => (x.id === n.id ? n : x)) : [n, ...l]))}
       onDeleted={() => {
         setNotes((l) => l.filter((x) => x.id !== current.id));
@@ -948,12 +880,19 @@ export function NotesWorkspace({
 
   // Esc closes the note shown over the boxes.
   useEffect(() => {
-    if (!(current && view === "grid" && desktop)) return;
+    if (!(current && desktop)) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && router.replace(url({ n: undefined }), { scroll: false });
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, view, desktop]);
+  }, [current?.id, desktop]);
+
+  // The open note's folder unfolds in the tree.
+  useEffect(() => {
+    if (!current) return;
+    const id = current.folderId ?? "inbox";
+    setOpenFolders((prev) => (prev.has(id) ? prev : new Set([...prev, id])));
+  }, [current?.id, current?.folderId]);
 
   // Phones: an open note takes the whole screen in both views.
   if (current && !desktop) {
@@ -964,57 +903,253 @@ export function NotesWorkspace({
     );
   }
 
-  if (view === "grid") {
+  // Phones: list or boxes, the note full screen (above).
+  if (!desktop) {
     return (
-      <div className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-5">
-        <aside className="hidden lg:block">{sidebar}</aside>
-        <div className="min-w-0">
-          <section className="card animate-in !p-3">{header}</section>
-          <div className="mt-4 columns-2 gap-3 sm:columns-3 xl:columns-4">
+      <div>
+        <section className="card animate-in !p-3">{header}</section>
+        {view === "grid" ? (
+          <div className="mt-4 columns-2 gap-3">
             {shown.map((n) => (
               <NoteCard key={n.id} n={n} href={url({ n: n.id })} />
             ))}
           </div>
-          {!shown.length && empty}
-        </div>
-        {current && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-8 backdrop-blur-[3px]" onClick={(e) => e.target === e.currentTarget && router.replace(url({ n: undefined }), { scroll: false })}>
-            <section className="card w-full max-w-3xl min-w-0" style={{ background: "var(--surface)", ...noteTint(current.color) }}>
-              {editor}
-            </section>
-          </div>
+        ) : (
+          <section className="card animate-in mt-3 !p-2">
+            {shown.map((n) => (
+              <NoteListItem key={n.id} n={n} href={url({ n: n.id })} />
+            ))}
+          </section>
         )}
+        {!shown.length && empty}
       </div>
     );
   }
 
-  return (
-    <div className="lg:grid lg:grid-cols-[220px_300px_minmax(0,1fr)] lg:gap-5">
-      <aside className="hidden lg:block">{sidebar}</aside>
-      <section className="card animate-in !p-3 lg:max-h-[calc(100vh-150px)] lg:overflow-y-auto">
-        {header}
-        <div className="mt-1 space-y-0.5">
-          {shown.map((n) => (
-            <NoteListItem key={n.id} n={n} href={url({ n: n.id })} active={current?.id === n.id} />
-          ))}
-          {!shown.length && empty}
+  /* ---------- desktop: Notion-like — page tree on the left, the note (or the collection) full width on the right */
+  // Titles follow what's typed in the open note.
+  const liveTree = tree.map((t) => {
+    const n = notes.find((x) => x.id === t.id);
+    return n ? { ...t, title: n.displayTitle, folderId: n.folderId, pinned: n.pinned, color: n.color } : t;
+  });
+  const byFolder = (fid: string | null) => liveTree.filter((t) => t.folderId === fid);
+  const pinned = liveTree.filter((t) => t.pinned);
+  const treeLink = (t: TreeNote, depth = 1) => {
+    const active = current?.id === t.id;
+    return (
+      <Link
+        key={`${depth}-${t.id}`}
+        href={url({ n: t.id })}
+        aria-current={active ? "page" : undefined}
+        className={`flex min-w-0 items-center gap-2 rounded-[7px] py-[5px] pr-2 text-[13px] ${active ? "bg-surface-3 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}
+        style={{ paddingLeft: 10 + depth * 14 }}
+      >
+        <FileText size={13} className="shrink-0" style={{ color: t.color && PROJECT_COLORS[t.color] ? PROJECT_COLORS[t.color].hex : "var(--ink-3)" }} />
+        <span className="truncate">{t.title}</span>
+      </Link>
+    );
+  };
+  const group = (id: string, label: React.ReactNode, icon: React.ReactNode, items: TreeNote[], href: string, active: boolean, extra?: React.ReactNode) => {
+    const isOpen = openFolders.has(id);
+    return (
+      <div key={id}>
+        <div className={`group flex items-center rounded-[7px] ${active ? "bg-surface-3" : "hover:bg-surface-2"}`}>
+          <button className="rounded p-1 pl-1.5 text-ink-3 hover:text-ink" onClick={() => toggleFolder(id)} aria-label={isOpen ? "Collapse" : "Expand"} aria-expanded={isOpen}>
+            <ChevronRight size={13} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
+          </button>
+          <Link href={href} className={`flex min-w-0 flex-1 items-center gap-2 py-[5px] pr-2 text-[13.5px] ${active ? "font-medium text-ink" : "text-ink-2 group-hover:text-ink"}`}>
+            {icon}
+            <span className="truncate">{label}</span>
+            <span className="num ml-auto text-[11px] text-ink-3">{items.length}</span>
+          </Link>
+          {extra}
         </div>
-      </section>
-      {current ? (
-        <section className="card animate-in hidden min-w-0 lg:block" style={noteTint(current.color)}>
-          {editor}
-        </section>
-      ) : (
-        <section className="card hidden min-h-[40vh] items-center justify-center text-center lg:flex">
+        {isOpen && (
           <div>
-            <p className="text-[14px] text-ink-2">Pick a note, or start a new one.</p>
-            <button className="btn btn-secondary mt-3" onClick={newNote} disabled={creating}>
-              <Plus size={14} /> New note
+            {items.map((t) => treeLink(t))}
+            {!items.length && <p className="py-1 text-[12px] text-ink-3" style={{ paddingLeft: 38 }}>Empty</p>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const notionSidebar = (
+    <aside className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-[16px] border border-hairline bg-[var(--card-bg)] backdrop-blur-xl">
+      <div className="flex items-center gap-2 px-3.5 pb-2 pt-3.5">
+        <NotebookIcon />
+        <span className="text-[15px] font-semibold tracking-[-0.01em]">Notes</span>
+        <span className="num text-[12px] text-ink-3">{total}</span>
+        <button className="ml-auto rounded-[7px] p-1.5 text-ink-2 hover:bg-surface-2 hover:text-ink" onClick={newNote} disabled={creating} aria-label="New note" title="New note">
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className="px-3 pb-2">
+        <label className="relative block">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search or #tag" aria-label="Search notes" className="input !rounded-[8px] !py-1.5 !pl-7 !text-[13px]" />
+        </label>
+      </div>
+      <nav className="flex-1 space-y-3 overflow-y-auto px-2 pb-3" aria-label="Notes">
+        <div className="flex flex-col gap-px">
+          <Link href={url({ folder: undefined, tag: undefined, n: undefined })} aria-current={isAll && !current ? "page" : undefined} className={navCls(isAll && !current)}>
+            <Rows3 size={14} className="shrink-0 text-ink-3" /> All notes <span className="num ml-auto text-[11px] text-ink-3">{total}</span>
+          </Link>
+        </div>
+        {pinned.length > 0 && (
+          <div>
+            <div className="section-label mb-0.5 px-2.5">Pinned</div>
+            {pinned.map((t) => treeLink(t, 0))}
+          </div>
+        )}
+        <div>
+          <div className="mb-0.5 flex items-center justify-between pl-2.5 pr-1">
+            <span className="section-label !mb-0">Folders</span>
+            <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label="New folder" title="New folder" onClick={() => setNewFolder("")}>
+              <FolderPlus size={14} />
             </button>
           </div>
-        </section>
-      )}
+          {newFolder !== null && (
+            <form className="mb-1 px-1" onSubmit={(e) => (e.preventDefault(), addFolder(newFolder))}>
+              <input autoFocus value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onBlur={() => !newFolder.trim() && setNewFolder(null)} placeholder="Folder name" className="input !py-1 !text-[13px]" aria-label="New folder name" />
+            </form>
+          )}
+          {group("inbox", "Inbox", <Inbox size={14} className="shrink-0 text-ink-3" />, byFolder(null), url({ folder: "none", tag: undefined, n: undefined }), filter.folder === "none" && !current)}
+          {folders.map((f) => (
+            <FolderTreeRow key={f.id} f={f} active={filter.folder === f.id && !current}>
+              {(extra) =>
+                group(f.id, f.name, <Folder size={14} className="shrink-0 text-ink-3" />, byFolder(f.id), url({ folder: f.id, tag: undefined, n: undefined }), filter.folder === f.id && !current, extra)
+              }
+            </FolderTreeRow>
+          ))}
+        </div>
+        {tags.length > 0 && (
+          <div>
+            <div className="section-label mb-1 px-2.5">Tags</div>
+            <div className="flex flex-wrap gap-1 px-1.5">
+              {tags.map((t) => (
+                <Link key={t.tag} href={url({ tag: filter.tag === t.tag ? undefined : t.tag, folder: undefined, n: undefined })} className="chip !text-[12px]" aria-pressed={filter.tag === t.tag}>
+                  #{t.tag} <span className="text-ink-3">{t.count}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </nav>
+    </aside>
+  );
+
+  return (
+    <div className="grid grid-cols-[264px_minmax(0,1fr)] items-start gap-6">
+      {notionSidebar}
+      <div className="min-w-0">
+        {current ? (
+          <section className="animate-in min-h-[calc(100vh-3rem)] rounded-[16px] border border-hairline px-10 py-6 xl:px-16" style={{ background: "var(--surface)", ...noteTint(current.color) }}>
+            {editor}
+          </section>
+        ) : (
+          <section className="animate-in">
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="label-mono mb-1.5">Notes</div>
+                <h1 className="truncate text-[30px] font-semibold tracking-[-0.03em]">{scopeLabel}</h1>
+                <p className="text-[13px] text-ink-3">
+                  {shown.length} note{shown.length === 1 ? "" : "s"}
+                  {filter.q ? ` matching “${filter.q}”` : ""} · last edited first
+                </p>
+              </div>
+              {viewToggle}
+              <button className="btn btn-primary" onClick={newNote} disabled={creating}>
+                <Plus size={15} /> New note
+              </button>
+            </div>
+            {view === "grid" ? (
+              <div className="columns-2 gap-3 xl:columns-3 2xl:columns-4">
+                {shown.map((n) => (
+                  <NoteCard key={n.id} n={n} href={url({ n: n.id })} />
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-[14px] border border-hairline bg-[var(--card-bg-strong)]">
+                <div className="grid grid-cols-[minmax(0,1fr)_160px_200px_110px] gap-3 border-b border-hairline bg-surface-2/60 px-4 py-2 text-[11.5px] font-medium text-ink-3">
+                  <span>Name</span>
+                  <span>Folder</span>
+                  <span>Tags</span>
+                  <span className="text-right">Edited</span>
+                </div>
+                {shown.map((n) => (
+                  <Link key={n.id} href={url({ n: n.id })} className="grid grid-cols-[minmax(0,1fr)_160px_200px_110px] items-center gap-3 border-b border-hairline px-4 py-2.5 last:border-b-0 hover:bg-surface-2/60">
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <FileText size={15} className="shrink-0" style={{ color: n.color && PROJECT_COLORS[n.color] ? PROJECT_COLORS[n.color].hex : "var(--ink-3)" }} />
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-[14px] font-medium">{n.displayTitle}</span>
+                          {n.pinned && <Pin size={11} className="shrink-0 text-ink-3" />}
+                          <LinkIcons n={n} />
+                        </span>
+                        {n.excerpt && <span className="block truncate text-[12px] text-ink-3">{n.excerpt}</span>}
+                      </span>
+                    </span>
+                    <span className="truncate text-[12.5px] text-ink-2">{n.folderName ?? "Inbox"}</span>
+                    <span className="min-w-0 truncate">
+                      <TagChips tags={n.tags.slice(0, 3)} small />
+                    </span>
+                    <span className="num text-right text-[12px] text-ink-3">{relativeTime(new Date(n.updatedAt))}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+            {!shown.length && empty}
+          </section>
+        )}
+      </div>
     </div>
+  );
+}
+
+/** A folder in the tree, with rename / delete on hover (passed to the row as `extra`). */
+function FolderTreeRow({ f, active, children }: { f: FolderDTO; active: boolean; children: (extra: React.ReactNode) => React.ReactNode }) {
+  const report = useReport();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(f.name);
+  const [confirm, setConfirm] = useState(false);
+  const [, start] = useTransition();
+  void active;
+  if (editing)
+    return (
+      <form
+        className="px-1 py-0.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setEditing(false);
+          start(async () => void report(await renameFolder(f.id, name)));
+        }}
+      >
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="input !py-1 !text-[13px]" aria-label="Folder name" onBlur={() => setEditing(false)} />
+      </form>
+    );
+  const extra = confirm ? (
+    <button className="btn btn-danger mr-1 !px-2 !py-0.5 !text-[11px]" onClick={() => start(async () => void report(await deleteFolder(f.id)))} onBlur={() => setConfirm(false)}>
+      Delete
+    </button>
+  ) : (
+    <span className="mr-1 hidden items-center group-hover:flex group-focus-within:flex">
+      <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label={`Rename ${f.name}`} onClick={() => setEditing(true)}>
+        <Pencil size={12} />
+      </button>
+      <button className="rounded p-1 text-ink-3 hover:text-bad" aria-label={`Delete ${f.name}`} onClick={() => setConfirm(true)}>
+        <Trash2 size={12} />
+      </button>
+    </span>
+  );
+  return <>{children(extra)}</>;
+}
+
+function NotebookIcon() {
+  return (
+    <span className="inline-flex h-6 w-6 items-center justify-center rounded-[7px] bg-surface-2 text-ink-2">
+      <FileText size={14} />
+    </span>
   );
 }
 

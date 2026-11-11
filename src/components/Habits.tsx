@@ -133,7 +133,7 @@ export function HabitDock({ habits }: { habits: HabitSummary[] }) {
       /* private mode */
     }
   };
-  if (!ready || !list.length || path === "/" || path.startsWith("/habits")) return null;
+  if (!ready || !list.length || path === "/" || path.startsWith("/habits") || path.startsWith("/notes")) return null;
   const done = list.filter((h) => h.doneToday).length;
 
   return (
