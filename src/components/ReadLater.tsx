@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { BookmarkPlus, Check, Copy, ExternalLink, FileUp, KeyRound, RotateCcw, Smartphone, Trash2, Undo2 } from "lucide-react";
+import { BookOpenText, BookmarkPlus, Check, Copy, NotebookPen, Settings2, X, ExternalLink, FileUp, KeyRound, RotateCcw, Smartphone, Trash2, Undo2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { addReadLater, deleteReadItem, importReadLater, resetCaptureToken, setReadStatus } from "@/app/actions";
+import Link from "next/link";
+import { addReadLater, deleteReadItem, getReaderView, importReadLater, resetCaptureToken, saveReadItemToNotes, setReadStatus } from "@/app/actions";
 import { relativeTime } from "@/lib/dates";
 import { SOURCE_LABEL, hostOf, type ReadSource } from "@/lib/read-later";
-import type { ReadItemDTO } from "@/lib/read-later-data";
+import type { ReadItemDTO, ReaderView } from "@/lib/read-later-data";
 import { useReport } from "./TaskSheet";
 
 type Tab = "unread" | "read" | "all";
@@ -20,6 +21,10 @@ export function ReadLater({ items: initial, token: initialToken, appUrl }: { ite
   const [tab, setTab] = useState<Tab>("unread");
   const [source, setSource] = useState<string>("all");
   const [draft, setDraft] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
+  /** item id → note id, for "In Notes" after saving (kept apart from the server's list, which refreshes). */
+  const [inNotes, setInNotes] = useState<Record<string, string>>({});
+  const [setup, setSetup] = useState(!initialToken);
   const [saving, startSave] = useTransition();
   const [, start] = useTransition();
   useEffect(() => setItems(initial), [initial]);
@@ -37,6 +42,7 @@ export function ReadLater({ items: initial, token: initialToken, appUrl }: { ite
   const counts = useMemo(() => ({ unread: items.filter((i) => i.status === "unread").length, read: items.filter((i) => i.status === "read").length, all: items.length }), [items]);
   const sources = useMemo(() => [...new Set(items.map((i) => i.source))], [items]);
   const shown = items.filter((i) => (tab === "all" || i.status === tab) && (source === "all" || i.source === source));
+  const open = preview ? items.find((i) => i.id === preview) ?? null : null;
 
   const toggleRead = (it: ReadItemDTO, read: boolean) => {
     setItems((l) => l.map((x) => (x.id === it.id ? { ...x, status: read ? "read" : "unread" } : x)));
@@ -45,167 +51,249 @@ export function ReadLater({ items: initial, token: initialToken, appUrl }: { ite
   const remove = (it: ReadItemDTO) => {
     const before = items;
     setItems((l) => l.filter((x) => x.id !== it.id));
+    if (preview === it.id) setPreview(null);
     start(async () => {
       if (!report(await deleteReadItem(it.id))) setItems(before);
     });
   };
+  const toNotes = (it: ReadItemDTO) =>
+    start(async () => {
+      const r = await saveReadItemToNotes(it.id);
+      if (report(r) && r.noteId) setInNotes((m) => ({ ...m, [it.id]: r.noteId! }));
+    });
+
+  // Esc closes the preview.
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPreview(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview]);
 
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="min-w-0 space-y-4">
+    <div>
+      {/* toolbar: add, filters, setup */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <form
-          className="card animate-in flex items-start gap-2 !p-3"
+          className="flex min-w-[260px] flex-1 items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (!draft.trim()) return;
             startSave(async () => {
-              const r = await addReadLater(draft);
-              if (report(r)) setDraft("");
+              if (report(await addReadLater(draft))) setDraft("");
             });
           }}
         >
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                e.currentTarget.form?.requestSubmit();
-              }
-            }}
-            rows={1}
-            placeholder="Paste a link or a note…"
-            aria-label="Save to read later"
-            className="input min-h-[42px] flex-1 resize-none !text-[14.5px] sm:resize-y"
-          />
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Paste a link or a note…" aria-label="Save to read later" className="input flex-1 !text-[14.5px]" />
           <button className="btn btn-primary shrink-0" disabled={saving || !draft.trim()}>
             {saving ? "Saving…" : "Save"}
           </button>
         </form>
+        <div className="seg-sm" role="group" aria-label="Show">
+          {(["unread", "read", "all"] as const).map((t) => (
+            <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
+              {t === "unread" ? "To read" : t === "read" ? "Read" : "All"} <span className="num text-ink-3">{counts[t]}</span>
+            </button>
+          ))}
+        </div>
+        <button className={`btn ${setup ? "btn-secondary" : "btn-ghost"} !text-[13px]`} onClick={() => setSetup((v) => !v)} aria-expanded={setup}>
+          <Settings2 size={14} /> Phone & import
+        </button>
+      </div>
+      {sources.length > 1 && (
+        <div className="-mt-2 mb-4 flex flex-wrap gap-1.5">
+          <button className="chip" aria-pressed={source === "all"} onClick={() => setSource("all")}>
+            Everything
+          </button>
+          {sources.map((s) => (
+            <button key={s} className="chip inline-flex items-center gap-1.5" aria-pressed={source === s} onClick={() => setSource(s)}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: SOURCE_DOT[s] ?? "var(--ink-3)" }} />
+              {SOURCE_LABEL[s as ReadSource] ?? s}
+            </button>
+          ))}
+        </div>
+      )}
+      {setup && (
+        <div className="mb-5 grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <PhoneSetup token={initialToken} appUrl={appUrl} />
+          <Bookmarklet appUrl={appUrl} />
+          <ImportBox />
+        </div>
+      )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="seg-sm" role="group" aria-label="Show">
-            {(["unread", "read", "all"] as const).map((t) => (
-              <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
-                {t === "unread" ? "To read" : t === "read" ? "Read" : "All"} <span className="num text-ink-3">{counts[t]}</span>
-              </button>
+      <div className={open ? "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start lg:gap-5" : ""}>
+        {/* the boards — Keep-style blocks that pack into columns */}
+        <div className={open ? "hidden lg:block" : ""}>
+          <div className={`gap-4 ${open ? "columns-1 xl:columns-2" : "columns-1 sm:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5"}`}>
+            {shown.map((it) => (
+              <ReadCard key={it.id} it={{ ...it, savedToNotes: inNotes[it.id] }} active={preview === it.id} onOpen={() => setPreview(it.id)} onRead={(r) => toggleRead(it, r)} onDelete={() => remove(it)} onNotes={() => toNotes(it)} />
             ))}
           </div>
-          {sources.length > 1 && (
-            <div className="flex flex-wrap gap-1.5">
-              <button className="chip" aria-pressed={source === "all"} onClick={() => setSource("all")}>
-                Everything
-              </button>
-              {sources.map((s) => (
-                <button key={s} className="chip inline-flex items-center gap-1.5" aria-pressed={source === s} onClick={() => setSource(s)}>
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: SOURCE_DOT[s] ?? "var(--ink-3)" }} />
-                  {SOURCE_LABEL[s as ReadSource] ?? s}
-                </button>
-              ))}
-            </div>
+          {!shown.length && (
+            <p className="card py-12 text-center text-[14px] text-ink-2">{tab === "unread" ? "Nothing waiting — share a link from your phone or paste one above." : "Nothing here yet."}</p>
           )}
         </div>
-
-        <ul className="card animate-in !p-0">
-          {shown.map((it) => (
-            <ReadRow key={it.id} it={it} onRead={(r) => toggleRead(it, r)} onDelete={() => remove(it)} />
-          ))}
-          {!shown.length && (
-            <li className="px-5 py-12 text-center text-[14px] text-ink-2">
-              {tab === "unread" ? "Nothing waiting — share a link from your phone or paste one above." : "Nothing here yet."}
-            </li>
-          )}
-        </ul>
+        {open && <ReaderPanel key={open.id} it={{ ...open, savedToNotes: inNotes[open.id] }} onClose={() => setPreview(null)} onRead={(r) => toggleRead(open, r)} onNotes={() => toNotes(open)} />}
       </div>
-
-      <aside className="space-y-4">
-        <PhoneSetup token={initialToken} appUrl={appUrl} />
-        <Bookmarklet appUrl={appUrl} />
-        <ImportBox />
-      </aside>
     </div>
   );
 }
 
-function ReadRow({ it, onRead, onDelete }: { it: ReadItemDTO; onRead: (read: boolean) => void; onDelete: () => void }) {
+type Item = ReadItemDTO & { savedToNotes?: string };
+
+/** One saved item as a Keep-style block: image on top (when the page has one), title, summary, site. */
+function ReadCard({ it, active, onOpen, onRead, onDelete, onNotes }: { it: Item; active: boolean; onOpen: () => void; onRead: (read: boolean) => void; onDelete: () => void; onNotes: () => void }) {
   const [confirm, setConfirm] = useState(false);
+  const [imgOk, setImgOk] = useState(true);
   const read = it.status === "read";
   const host = it.url ? hostOf(it.url) : null;
-  const body = (
-    <>
-      <div className={`line-clamp-2 text-[14.5px] font-medium leading-snug ${read ? "text-ink-2" : ""}`}>{it.title}</div>
-      {it.description && <p className="mt-0.5 line-clamp-2 text-[12.5px] text-ink-2">{it.description}</p>}
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] text-ink-3">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: SOURCE_DOT[it.source] ?? "var(--ink-3)" }} />
-          {it.siteName ?? host ?? SOURCE_LABEL[it.source as ReadSource] ?? "Note"}
-        </span>
-        <span>· saved {relativeTime(new Date(it.savedAt))}</span>
-        {it.via === "phone" && (
-          <span className="inline-flex items-center gap-0.5">
-            · <Smartphone size={10} /> phone
-          </span>
-        )}
-        {it.via === "import" && <span>· imported</span>}
-      </div>
-    </>
-  );
   return (
-    <li className={`group flex items-start gap-3 border-b border-hairline px-4 py-3 last:border-b-0 ${read ? "opacity-70" : ""}`}>
-      {it.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={it.imageUrl}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={(e) => (e.currentTarget.style.visibility = "hidden")}
-          className="mt-0.5 h-14 w-14 shrink-0 rounded-[10px] border border-hairline bg-surface-2 object-cover sm:h-16 sm:w-24"
-        />
-      ) : (
-        <span className="mt-0.5 inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-[18px] font-semibold text-ink-3 sm:h-16 sm:w-24">
-          {host ? <Favicon host={host} /> : "Aa"}
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        {it.url ? (
-          <a href={it.url} target="_blank" rel="noreferrer noopener" className="block hover:underline-offset-2 [&>div:first-child]:hover:underline">
-            {body}
-          </a>
-        ) : (
-          <div className="whitespace-pre-wrap">{body}</div>
+    <article
+      className={`group relative mb-4 break-inside-avoid overflow-hidden rounded-[14px] border bg-[var(--card-bg-strong)] transition-shadow hover:shadow-[var(--shadow-lift)] ${active ? "border-accent ring-2 ring-[var(--accent-soft)]" : "border-hairline"} ${read ? "opacity-75" : ""}`}
+    >
+      <button type="button" onClick={onOpen} className="block w-full text-left" aria-label={`Preview ${it.title}`}>
+        {it.imageUrl && imgOk && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={it.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setImgOk(false)} className="max-h-[260px] w-full border-b border-hairline bg-surface-2 object-cover" />
         )}
-      </div>
-      <div className="flex shrink-0 items-center gap-0.5">
+        <div className="px-3.5 pb-2 pt-3">
+          <div className={`text-[14.5px] font-semibold leading-snug ${read ? "text-ink-2" : ""}`}>{it.title}</div>
+          {it.description && <p className={`mt-1 whitespace-pre-line text-[13px] leading-relaxed text-ink-2 ${it.source === "text" ? "line-clamp-[12]" : "line-clamp-4"}`}>{it.description}</p>}
+          <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-ink-3">
+            {host ? <Favicon host={host} small /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: SOURCE_DOT.text }} />}
+            <span className="truncate">{it.siteName ?? host ?? "Note"}</span>
+            <span className="shrink-0">· {relativeTime(new Date(it.savedAt))}</span>
+            {it.via === "phone" && <Smartphone size={10} className="shrink-0" aria-label="from phone" />}
+          </div>
+        </div>
+      </button>
+      <div className="flex items-center gap-0.5 px-2 pb-2 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+        <button className="btn btn-ghost !px-2" onClick={onOpen} aria-label="Preview" title="Preview">
+          <BookOpenText size={15} />
+        </button>
         {it.url && (
-          <a href={it.url} target="_blank" rel="noreferrer noopener" className="btn btn-ghost !px-2" aria-label="Open" title="Open">
+          <a href={it.url} target="_blank" rel="noreferrer noopener" className="btn btn-ghost !px-2" aria-label="Open original" title="Open original">
             <ExternalLink size={15} />
           </a>
+        )}
+        {it.savedToNotes ? (
+          <Link href={`/notes?n=${it.savedToNotes}`} className="btn btn-ghost !px-2 text-good" aria-label="Open in Notes" title="Saved — open in Notes">
+            <NotebookPen size={15} />
+          </Link>
+        ) : (
+          <button className="btn btn-ghost !px-2" onClick={onNotes} aria-label="Save to notes" title="Save to notes">
+            <NotebookPen size={15} />
+          </button>
         )}
         <button className={`btn btn-ghost !px-2 ${read ? "" : "text-good"}`} onClick={() => onRead(!read)} aria-label={read ? "Mark as unread" : "Mark as read"} title={read ? "Mark as unread" : "Mark as read"}>
           {read ? <Undo2 size={15} /> : <Check size={16} />}
         </button>
-        {confirm ? (
-          <button className="btn btn-danger !px-2 !py-1 !text-[12px]" onClick={onDelete} onBlur={() => setConfirm(false)}>
-            Delete
-          </button>
-        ) : (
-          <button className="btn btn-ghost !px-2 text-ink-3" onClick={() => setConfirm(true)} aria-label="Delete" title="Delete">
-            <Trash2 size={15} />
-          </button>
-        )}
+        <span className="ml-auto">
+          {confirm ? (
+            <button className="btn btn-danger !px-2 !py-1 !text-[12px]" onClick={onDelete} onBlur={() => setConfirm(false)}>
+              Delete
+            </button>
+          ) : (
+            <button className="btn btn-ghost !px-2 text-ink-3" onClick={() => setConfirm(true)} aria-label="Delete" title="Delete">
+              <Trash2 size={15} />
+            </button>
+          )}
+        </span>
       </div>
-    </li>
+    </article>
+  );
+}
+
+/** Print View: the article's images and text only, on the right (full screen on phones). */
+function ReaderPanel({ it, onClose, onRead, onNotes }: { it: Item; onClose: () => void; onRead: (read: boolean) => void; onNotes: () => void }) {
+  const [view, setView] = useState<ReaderView | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    getReaderView(it.id)
+      .then((v) => alive && setView(v))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [it.id]);
+  const read = it.status === "read";
+  const host = it.url ? hostOf(it.url) : null;
+  const image = view?.imageUrl ?? it.imageUrl;
+  const showHero = image && !(view?.content ?? "").includes(image);
+  return (
+    <section className="fixed inset-0 z-50 overflow-y-auto bg-surface lg:sticky lg:inset-auto lg:top-6 lg:z-auto lg:h-[calc(100vh-3rem)] lg:rounded-[16px] lg:border lg:border-hairline" aria-label="Preview">
+      <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-hairline bg-[var(--card-bg-strong)] px-3 py-2 backdrop-blur-xl">
+        <button className="btn btn-ghost !px-2" onClick={onClose} aria-label="Close preview" title="Close (Esc)">
+          <X size={16} />
+        </button>
+        <span className="label-mono ml-1 truncate">Print view{host ? ` · ${host}` : ""}</span>
+        <div className="ml-auto flex items-center gap-1">
+          {it.savedToNotes ? (
+            <Link href={`/notes?n=${it.savedToNotes}`} className="btn btn-secondary !py-1 !text-[12.5px]">
+              <NotebookPen size={14} /> In Notes
+            </Link>
+          ) : (
+            <button className="btn btn-secondary !py-1 !text-[12.5px]" onClick={onNotes}>
+              <NotebookPen size={14} /> Save to notes
+            </button>
+          )}
+          <button className="btn btn-ghost !px-2" onClick={() => onRead(!read)} aria-label={read ? "Mark as unread" : "Mark as read"} title={read ? "Mark as unread" : "Mark as read"}>
+            {read ? <Undo2 size={15} /> : <Check size={16} className="text-good" />}
+          </button>
+          {it.url && (
+            <a href={it.url} target="_blank" rel="noreferrer noopener" className="btn btn-ghost !px-2" aria-label="Open original" title="Open original">
+              <ExternalLink size={15} />
+            </a>
+          )}
+        </div>
+      </div>
+      <article className="mx-auto max-w-[720px] px-5 pb-16 pt-6 sm:px-8">
+        <h1 className="text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] sm:text-[32px]">{view?.title ?? it.title}</h1>
+        <p className="mt-2 text-[13px] text-ink-3">
+          {[view?.byline, view?.siteName ?? it.siteName ?? host, view?.readMinutes ? `${view.readMinutes} min read` : null].filter(Boolean).join(" · ")}
+        </p>
+        {showHero && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={image!} alt="" referrerPolicy="no-referrer" className="mt-5 w-full rounded-[12px] border border-hairline" onError={(e) => (e.currentTarget.style.display = "none")} />
+        )}
+        <div className="mt-6">
+          {loading ? (
+            <div className="space-y-3" aria-busy="true">
+              {[92, 100, 84, 96, 70].map((w, i) => (
+                <div key={i} className="h-3.5 animate-pulse rounded bg-surface-2" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+          ) : view?.content ? (
+            // Sanitized on the server (lib/reader.ts: allow-listed tags, http(s) links and images only).
+            <div className="reader" dangerouslySetInnerHTML={{ __html: view.content }} />
+          ) : (
+            <div className="reader">
+              {(view?.description ?? it.description) && <p className="whitespace-pre-line">{view?.description ?? it.description}</p>}
+              {it.url && (
+                <p className="rounded-[12px] bg-surface-2 p-4 text-[14px] text-ink-2">
+                  This page can't be shown in print view — it may need a login (Instagram, X) or be mostly video.{" "}
+                  <a href={it.url} target="_blank" rel="noreferrer noopener">
+                    Open the original
+                  </a>
+                  .
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </article>
+    </section>
   );
 }
 
 /** Site icon, or the site's first letter if it can't load. */
-function Favicon({ host }: { host: string }) {
+function Favicon({ host, small }: { host: string; small?: boolean }) {
   const [failed, setFailed] = useState(false);
-  if (failed) return <span className="uppercase">{host.charAt(0)}</span>;
+  if (failed) return <span className={`inline-flex shrink-0 items-center justify-center rounded bg-surface-2 uppercase ${small ? "h-3.5 w-3.5 text-[9px]" : "h-6 w-6"}`}>{host.charAt(0)}</span>;
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`} alt="" className="h-6 w-6 rounded" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+    <img src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`} alt="" className={`shrink-0 rounded ${small ? "h-3.5 w-3.5" : "h-6 w-6"}`} referrerPolicy="no-referrer" onError={() => setFailed(true)} />
   );
 }
 

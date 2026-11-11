@@ -22,7 +22,8 @@ import { PLAN_DAYS } from "@/lib/bible-plan";
 import { normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
 import { buildEvent } from "@/lib/events";
 import { extractLinks } from "@/lib/read-later";
-import { importLinks, newCaptureToken, saveToReadLater } from "@/lib/read-later-data";
+import { importLinks, newCaptureToken, readerView, saveToReadLater, type ReaderView } from "@/lib/read-later-data";
+import { articleToMarkdown } from "@/lib/reader";
 import { listNotes, type NoteDTO } from "@/lib/notes-data";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -711,4 +712,24 @@ export async function importReadLater(form: FormData): Promise<ActionResult> {
 export async function resetCaptureToken(): Promise<ActionResult & { token?: string }> {
   const token = await newCaptureToken();
   return { ...done("New capture key — update it in your Shortcut"), token };
+}
+
+/** Reader ("Print View") content for an item — fetched and kept on first open. */
+export async function getReaderView(id: string): Promise<ReaderView | null> {
+  return readerView(id);
+}
+
+/** Copy a Read Later item into Notes (Inbox, #read-later): link, summary and the article's text as Markdown. */
+export async function saveReadItemToNotes(id: string): Promise<ActionResult & { noteId?: string }> {
+  const v = await readerView(id);
+  if (!v) return fail("That item is gone.");
+  const parts: string[] = [];
+  if (v.url) parts.push(`[${v.siteName ?? new URL(v.url).hostname.replace(/^www\./, "")}](${v.url})${v.byline ? ` · ${v.byline}` : ""}`);
+  if (v.description && !v.content) parts.push(v.url ? `> ${v.description.replace(/\n/g, "\n> ")}` : v.description);
+  if (v.content) parts.push(articleToMarkdown(v.content));
+  const item = await prisma.readItem.findUnique({ where: { id }, select: { source: true } });
+  const note = await prisma.note.create({
+    data: { title: v.title.slice(0, 200), body: parts.join("\n\n").slice(0, 100_000), tags: ["read-later", ...(item && item.source !== "web" && item.source !== "text" ? [item.source] : [])] },
+  });
+  return { ...done("Saved to Notes"), noteId: note.id };
 }

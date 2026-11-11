@@ -83,6 +83,11 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   Chrome, Safari and any app). Desktop Chrome: a bookmarklet opens `/read-later?add=<url>`, which saves it and cleans the address. Imports: any
   JSON/HTML/text export (Instagram saved_posts.json, Chrome ReadingList Takeout, bookmarks .html) via `extractLinks`. Pure logic and
   tests in `lib/read-later.ts`; I/O (fetchMeta, save, import, token) in `lib/read-later-data.ts`. X bookmarks have no free export.
+  Page is full width: Keep-style masonry cards (image on top), "Phone & import" setup panel toggled from the toolbar. Clicking a
+  card opens the **Print view** on the right (full screen on phones): `readerView` fetches the page once, Readability (`lib/reader.ts`,
+  linkedom) extracts the article and `sanitizeArticle` rebuilds it with allow-listed tags only before it's stored in
+  `ReadItem.content` and rendered as HTML (`.reader` styles). "Save to notes" (`saveReadItemToNotes`) makes an Inbox note tagged
+  #read-later with the link and the article as Markdown (turndown).
 - Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Read Later, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).

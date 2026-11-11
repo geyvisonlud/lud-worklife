@@ -356,6 +356,11 @@ model ReadItem {
   status      String    @default("unread")
   savedAt     DateTime  @default(now())
   readAt      DateTime?
+  /// Reader view (Print View): the article's text and images as sanitized HTML, fetched on first preview.
+  content     String?
+  byline      String?
+  readMinutes Int?
+  contentAt   DateTime?
 
   @@index([status, savedAt])
 }

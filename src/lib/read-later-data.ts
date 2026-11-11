@@ -3,6 +3,7 @@ import type { ReadItem } from "@prisma/client";
 import { prisma } from "./db";
 import { SETTING_KEYS, getSetting, setSetting } from "./settings";
 import { fallbackTitle, parseMeta, sourceOf, splitShared, type FoundLink } from "./read-later";
+import { extractArticle } from "./reader";
 
 export type ReadItemDTO = {
   id: string;
@@ -30,13 +31,13 @@ export const readItemDTO = (r: ReadItem): ReadItemDTO => ({
   savedAt: r.savedAt.toISOString(),
 });
 
-/** Title, description and preview image of a page (best effort: 5 s, first 300 KB). */
-export async function fetchMeta(url: string) {
+/** A page's HTML (best effort): up to `maxBytes`, or only until </head> when `headOnly`. Null if it isn't an HTML page. */
+async function fetchHtml(url: string, opts: { maxBytes: number; timeoutMs: number; headOnly?: boolean }) {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; LudWorklife/1.0; +read-later)", Accept: "text/html,application/xhtml+xml" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; LudWorklife/1.0; +read-later)", Accept: "text/html,application/xhtml+xml", "Accept-Language": "en,pt;q=0.8" },
       redirect: "follow",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(opts.timeoutMs),
       cache: "no-store",
     });
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return null;
@@ -44,17 +45,54 @@ export async function fetchMeta(url: string) {
     if (!reader) return null;
     let html = "";
     const dec = new TextDecoder();
-    while (html.length < 300_000) {
+    while (html.length < opts.maxBytes) {
       const { value, done } = await reader.read();
       if (done) break;
       html += dec.decode(value, { stream: true });
-      if (/<\/head>/i.test(html)) break;
+      if (opts.headOnly && /<\/head>/i.test(html)) break;
     }
     reader.cancel().catch(() => {});
-    return parseMeta(html, res.url || url);
+    return { html, url: res.url || url };
   } catch {
     return null;
   }
+}
+
+/** Title, description and preview image of a page (best effort: 5 s, the <head> only). */
+export async function fetchMeta(url: string) {
+  const page = await fetchHtml(url, { maxBytes: 300_000, timeoutMs: 5000, headOnly: true });
+  return page ? parseMeta(page.html, page.url) : null;
+}
+
+export type ReaderView = { title: string; url: string | null; siteName: string | null; byline: string | null; imageUrl: string | null; description: string | null; readMinutes: number | null; content: string | null; savedAt: string };
+
+/**
+ * The item's reader view. Links are fetched once and kept (an empty result is kept for a day, so pages
+ * behind a login aren't fetched on every open); saved text is shown as is.
+ */
+export async function readerView(id: string): Promise<ReaderView | null> {
+  let it = await prisma.readItem.findUnique({ where: { id } });
+  if (!it) return null;
+  const stale = !it.contentAt || (!it.content && Date.now() - it.contentAt.getTime() > 86400_000);
+  if (it.url && stale) {
+    const page = await fetchHtml(it.url, { maxBytes: 3_000_000, timeoutMs: 9000 });
+    const art = page ? extractArticle(page.html, page.url) : null;
+    it = await prisma.readItem.update({
+      where: { id },
+      data: { content: art?.content ?? null, byline: art?.byline ?? null, readMinutes: art?.readMinutes ?? null, contentAt: new Date(), ...(art?.siteName && !it.siteName ? { siteName: art.siteName } : {}) },
+    });
+  }
+  return {
+    title: it.title,
+    url: it.url,
+    siteName: it.siteName,
+    byline: it.byline,
+    imageUrl: it.imageUrl,
+    description: it.description,
+    readMinutes: it.readMinutes,
+    content: it.content,
+    savedAt: it.savedAt.toISOString(),
+  };
 }
 
 /**
