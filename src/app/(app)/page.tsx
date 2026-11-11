@@ -24,20 +24,21 @@ import { daySummary, groupTasks } from "@/lib/tasks";
 export default async function TodayPage() {
   const tz = appTimeZone();
   const day = today();
-  const [events, tasks, projects, name, calendars, notion] = await Promise.all([
+  // Everything in one round of parallel queries (each sequential await was a trip to the database).
+  const [events, tasks, projects, name, calendars, notion, suggestions, mailAccounts, habits, bible, recentNotes, saved] = await Promise.all([
     eventsBetween(day, addDays(day, 1)),
     listTasks({ OR: [{ status: { not: "done" } }, { completedAt: { gte: new Date(Date.now() - 86400_000) } }] }),
     listProjects(),
     ownerFirstName(),
     prisma.calendar.findMany({ select: { id: true, name: true } }),
     prisma.notionConnection.findFirst({ orderBy: { lastSyncedAt: "desc" } }),
-  ]);
-  const [suggestions, mailAccounts] = await Promise.all([
     prisma.emailSuggestion.findMany({ where: { status: "pending", account: { emailEnabled: true } }, include: { account: { select: { email: true } } }, orderBy: [{ priority: "desc" }, { receivedAt: "desc" }], take: 12 }),
     prisma.calendarAccount.findMany({ select: { provider: true, scopes: true, emailEnabled: true, lastEmailScanAt: true } }),
+    habitsToday(),
+    bibleState(),
+    listNotes({ take: 6 }),
+    prisma.savedQuote.findMany({ select: { kind: true, key: true } }),
   ]);
-  const [habits, bible, recentNotes] = await Promise.all([habitsToday(), bibleState(), listNotes({ take: 6 })]);
-  const saved = await prisma.savedQuote.findMany({ select: { kind: true, key: true } });
   const stoic = stoicOfDay(day);
   const verse = verseOfDay(day);
   const canScan = mailAccounts.some((a) => a.provider === "google" && a.emailEnabled && hasGmailScope(a.scopes));

@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { Splash } from "@/components/Splash";
 import { Sidebar, TabBar } from "@/components/Nav";
 import { WorkProvider } from "@/components/TaskSheet";
 import { Main } from "@/components/Main";
@@ -10,17 +12,30 @@ import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The app shell streams: the launch screen (Splash) goes out at once, and the shell with its data replaces it
+ * as soon as the database answers — so opening the PWA never shows a blank screen.
+ */
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<Splash />}>
+      <AppShell>{children}</AppShell>
+    </Suspense>
+  );
+}
+
+async function AppShell({ children }: { children: React.ReactNode }) {
   const day = today();
-  const [projects, overdue, settings, accounts, notion, habits] = await Promise.all([
+  const settingsP = getSettings();
+  const [projects, overdue, settings, accounts, notion, habits, target] = await Promise.all([
     prisma.project.findMany({ where: { archived: false }, select: { id: true, name: true, emoji: true, color: true }, orderBy: [{ stage: "asc" }, { position: "asc" }] }),
     prisma.task.count({ where: { status: { not: "done" }, dueDate: { lt: day } } }),
-    getSettings(),
+    settingsP,
     prisma.calendarAccount.findMany({ select: { lastSyncedAt: true, status: true } }),
     prisma.notionConnection.findMany({ select: { lastSyncedAt: true, status: true } }),
     habitsToday(),
+    settingsP.then((s) => (s.taskCalendarId ? prisma.calendar.findUnique({ where: { id: s.taskCalendarId }, select: { name: true } }) : null)),
   ]);
-  const target = settings.taskCalendarId ? await prisma.calendar.findUnique({ where: { id: settings.taskCalendarId }, select: { name: true } }) : null;
   const latest = (rows: { lastSyncedAt: Date | null }[]) =>
     rows.reduce<Date | null>((m, r) => (r.lastSyncedAt && (!m || r.lastSyncedAt > m) ? r.lastSyncedAt : m), null);
   const sync = [

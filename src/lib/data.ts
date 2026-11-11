@@ -188,23 +188,24 @@ export const notionContent = (p: Pick<Project, "notionContent">) => (Array.isArr
 /** Today's checklist: active habits with done/streak/this-week. */
 export async function habitsToday() {
   const day = today();
-  const { weekStart } = await getSettings();
   // ~13 months of history covers any realistic current streak (the habit pages load everything).
   const since = addDays(day, -400);
-  const habits = await prisma.habit.findMany({
-    where: { archived: false },
-    include: { checks: { where: { day: { gte: since } }, select: { day: true } } },
-    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-  });
+  const [{ weekStart }, habits] = await Promise.all([
+    getSettings(),
+    prisma.habit.findMany({
+      where: { archived: false },
+      include: { checks: { where: { day: { gte: since } }, select: { day: true } } },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
   return habits.map((h) => summarize(h, new Set(h.checks.map((c) => c.day)), day, weekStart));
 }
 
 /* ------------------------------------------------------- Bible in a year */
 
 export async function bibleState() {
-  const start = await getSetting(SETTING_KEYS.biblePlanStart);
   const day = today();
-  const doneRows = await prisma.bibleDay.findMany({ select: { day: true } });
+  const [start, doneRows] = await Promise.all([getSetting(SETTING_KEYS.biblePlanStart), prisma.bibleDay.findMany({ select: { day: true } })]);
   const done = new Set(doneRows.map((r) => r.day));
   if (!start) return { started: false as const, done };
   const current = planDay(start, day);
