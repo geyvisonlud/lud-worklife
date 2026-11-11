@@ -24,7 +24,7 @@ export function ReadLater({ items: initial, token: initialToken, appUrl }: { ite
   const [preview, setPreview] = useState<string | null>(null);
   /** item id → note id, for "In Notes" after saving (kept apart from the server's list, which refreshes). */
   const [inNotes, setInNotes] = useState<Record<string, string>>({});
-  const [setup, setSetup] = useState(!initialToken);
+  const [setup, setSetup] = useState(false);
   const [saving, startSave] = useTransition();
   const [, start] = useTransition();
   useEffect(() => setItems(initial), [initial]);
