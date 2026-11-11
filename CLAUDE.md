@@ -51,7 +51,8 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   Keep marketing filtering in `screen` (cheap, tested) rather than in the prompt.
 - Today: `DayOverview` comes first (greeting in Geist sans (no serif on Today), now/next, the day ribbon — today's events in calendar colors and hatched focus
   blocks on one line with a now marker — and the day's figures; math in `lib/day-overview.ts`, tested), then `HabitStrip` (story-style emoji circles, no names; hold ~0.65 s until the ring closes to check off, hold again to undo — a tap does nothing; the dock keeps tap-to-check rows), then
-  two independent columns (Agenda + email | To do + Bible; on phones agenda, to do, email, Bible), projects + Notion, quotes.
+  `ProjectCards` (colored gradient cards: in progress → planned → on hold, 3 on desktop / swipe on phones) and `TaskTable` (Notion-style
+  table of open tasks: All / In projects / No project; logic in `lib/work-overview.ts`, tested), then two independent columns (Agenda + email | To do + Bible + Notes), From Notion, quotes.
 - Google Tasks: two-way (`lib/google-tasks.ts` pure + tested, `lib/google-tasks-sync.ts` I/O). Lists in `GoogleTaskList` (toggle per list on
   Connections); open tasks are imported, then changes since `lastSyncedAt` (deletions too) are pulled. Edits here (title, notes, due date,
   done) are pushed by the task actions; `Task.googleTaskUpdated` keeps our own writes from being pulled back. Google has no time,

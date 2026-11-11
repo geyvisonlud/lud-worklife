@@ -1,3 +1,4 @@
+import { ProjectCards, TaskTable } from "@/components/TodayWork";
 import { NotesBox } from "@/components/Notes";
 import { listNotes } from "@/lib/notes-data";
 import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
@@ -12,7 +13,7 @@ import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
 import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
 import { QuickAdd, TaskRow } from "@/components/TaskBits";
-import { Card, NotionMark, ProgressBar, ProjectGlyph, notionReasonLabel } from "@/components/ui";
+import { Card, NotionMark, ProjectGlyph, notionReasonLabel } from "@/components/ui";
 import { projectColor } from "@/lib/colors";
 import { prisma } from "@/lib/db";
 import { addDays, appTimeZone, dayBounds, formatDay, formatDuration, greeting, minutesInTz, relativeTime, wallMinutes } from "@/lib/dates";
@@ -54,7 +55,6 @@ export default async function TodayPage() {
     day,
     tz,
   );
-  const active = projects.filter((p) => p.stage === "active");
   const fromNotion = projects.filter((p) => p.source === "notion").slice(0, 5);
   const calNames = Object.fromEntries(calendars.map((c) => [c.id, c.name]));
   const focusList = [...g.overdue, ...g.today];
@@ -116,6 +116,9 @@ export default async function TodayPage() {
 
       <HabitStrip habits={habits} />
       <GoogleTasksAutoSync />
+
+      <ProjectCards projects={projects} tasks={tasks} />
+      <TaskTable tasks={tasks} projects={projects} />
 
       {/* Two independent columns on desktop (no gaps under the shorter card); on phones: agenda, to do, email, Bible. */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start">
@@ -186,34 +189,7 @@ export default async function TodayPage() {
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-12">
-        <Card title="Projects in progress" href="/projects" className="lg:col-span-7">
-          {active.length ? (
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {active.map((p) => {
-                const pct = p.taskCount ? p.doneCount / p.taskCount : 0;
-                return (
-                  <li key={p.id}>
-                    <Link href={`/projects/${p.id}`} className="row-button flex items-center gap-3 p-2">
-                      <ProjectGlyph emoji={p.emoji} color={p.color} size={38} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[14.5px] font-medium">{p.name}</div>
-                        <div className="mt-1.5">
-                          <ProgressBar pct={pct} color={projectColor(p.color).hex} />
-                        </div>
-                        <div className="num mt-1 text-[11.5px] text-ink-2">
-                          {p.doneCount}/{p.taskCount} tasks · {Math.round(pct * 100)}%
-                        </div>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="py-6 text-center text-[14px] text-ink-2">No project in progress.</p>
-          )}
-        </Card>
-        <Card title="From Notion" href="/connections" className="lg:col-span-5">
+        <Card title="From Notion" href="/connections" className="lg:col-span-12">
           {fromNotion.length ? (
             <ul>
               {fromNotion.map((p) => (
