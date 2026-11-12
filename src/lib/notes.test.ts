@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, mailtoHref, normalizeTags, noteTitle, parseQuery, plainText } from "./notes";
+import { canMoveFolder, excerpt, folderAndDescendants, folderTree, mailtoHref, normalizeTags, noteTitle, parseQuery, plainText } from "./notes";
 
 describe("notes", () => {
   it("normalizes tags", () => {
@@ -73,5 +73,35 @@ describe("list continuation", () => {
   it("ends the list on an empty item, and ignores plain lines", () => {
     expect(continueList("- a\n- [ ] ", 10, 10)).toEqual({ text: "- a\n", cursor: 4 });
     expect(continueList("plain text", 10, 10)).toBeNull();
+  });
+});
+
+describe("folder tree", () => {
+  const f = (id: string, parentId: string | null, position = 0, name = id) => ({ id, name, parentId, position });
+  const folders = [f("work", null, 2), f("home", null, 1), f("clients", "work", 1), f("acme", "clients"), f("ideas", "work", 2)];
+
+  it("orders depth first with depth and path", () => {
+    expect(folderTree(folders).map((x) => [x.id, x.depth, x.path])).toEqual([
+      ["home", 0, "home"],
+      ["work", 0, "work"],
+      ["clients", 1, "work / clients"],
+      ["acme", 2, "work / clients / acme"],
+      ["ideas", 1, "work / ideas"],
+    ]);
+  });
+
+  it("puts orphans and cycles at the top level", () => {
+    const t = folderTree([f("a", "missing"), f("b", "c"), f("c", "b")]);
+    expect(t.map((x) => x.id).sort()).toEqual(["a", "b", "c"]);
+    expect(t.find((x) => x.id === "a")?.depth).toBe(0);
+  });
+
+  it("finds descendants and refuses moves into them", () => {
+    expect(folderAndDescendants(folders, "work").sort()).toEqual(["acme", "clients", "ideas", "work"]);
+    expect(canMoveFolder(folders, "work", "acme")).toBe(false);
+    expect(canMoveFolder(folders, "work", "work")).toBe(false);
+    expect(canMoveFolder(folders, "acme", "home")).toBe(true);
+    expect(canMoveFolder(folders, "acme", null)).toBe(true);
+    expect(canMoveFolder(folders, "acme", "nope")).toBe(false);
   });
 });

@@ -58,7 +58,7 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   done) are pushed by the task actions; `Task.googleTaskUpdated` keeps our own writes from being pulled back. Google has no time,
   priority or project — those stay local. Pulled with the calendar sync and by `GoogleTasksAutoSync` on Today/Tasks.
 - Notes (own notes — Google Keep has no API for personal accounts): `Note` (Markdown `body`, `tags` String[] lowercase without
-  "#", `pinned`, optional `NoteFolder`), listed by `updatedAt` (last edited/added first). Pure helpers in `lib/notes.ts` (tags,
+  "#", `pinned`, optional `NoteFolder` — folders nest via `parentId`; `folderTree`/`folderAndDescendants`/`canMoveFolder` in lib/notes.ts; a folder lists its subfolders' notes too; deleting one moves its notes and subfolders up a level), listed by `updatedAt` (last edited/added first). Pure helpers in `lib/notes.ts` (tags,
   title from first line, excerpt, `#tag` search syntax, `mailtoHref` for e-mail sharing — plain text), loaders in `lib/notes-data.ts`.
   `/notes` = folders/tags sidebar, list, editor (autosave ~0.7 s, Edit/Preview, checklist boxes toggle the source line);
   `NotesBox` on Today (6 latest + search via `findNotes`). Markdown is rendered with react-markdown + remark-gfm (no raw HTML).

@@ -22,6 +22,7 @@ import {
   Code,
   Copy,
   Folder,
+  FolderInput,
   FolderPlus,
   Hash,
   Heading,
@@ -38,10 +39,10 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { createFolder, createNote, deleteFolder, deleteNote, findNotes, noteToEvent, noteToProject, renameFolder, updateNote } from "@/app/actions";
+import { createFolder, createNote, deleteFolder, deleteNote, findNotes, moveFolder, noteToEvent, noteToProject, renameFolder, updateNote } from "@/app/actions";
 import { PROJECT_COLORS } from "@/lib/colors";
 import { formatDay, relativeTime } from "@/lib/dates";
-import { continueList, excerpt, mailtoHref, normalizeTags, noteTitle } from "@/lib/notes";
+import { canMoveFolder, continueList, excerpt, mailtoHref, normalizeTags, noteTitle } from "@/lib/notes";
 import type { FolderDTO, NoteDTO } from "@/lib/notes-data";
 import { Field, Sheet } from "./Sheet";
 import { useReport, useWork } from "./TaskSheet";
@@ -516,6 +517,7 @@ function NoteEditor({
             <option value="">Inbox</option>
             {folders.map((f) => (
               <option key={f.id} value={f.id}>
+                {"\u00a0\u00a0".repeat(f.depth)}
                 {f.name}
               </option>
             ))}
@@ -737,6 +739,23 @@ export function NotesWorkspace({
       /* private mode */
     }
   }, []);
+  const saveOpen = (next: Set<string>) => {
+    try {
+      localStorage.setItem(TREE_KEY, JSON.stringify([...next]));
+    } catch {
+      /* private mode */
+    }
+  };
+  /** Unfolds a folder and the folders above it. */
+  const openFolder = (id: string) =>
+    setOpenFolders((prev) => {
+      const chain: string[] = [];
+      for (let cur: string | null = id; cur && !chain.includes(cur); cur = folders.find((f) => f.id === cur)?.parentId ?? null) chain.push(cur);
+      if (chain.every((c) => prev.has(c))) return prev;
+      const next = new Set([...prev, ...chain]);
+      saveOpen(next);
+      return next;
+    });
   const toggleFolder = (id: string) =>
     setOpenFolders((prev) => {
       const next = new Set(prev);
@@ -756,7 +775,13 @@ export function NotesWorkspace({
   const [notes, setNotes] = useState(initialNotes);
   const [q, setQ] = useState(filter.q);
   const [view, setView] = useState<View>("list");
-  const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [newFolder, setNewFolderState] = useState<string | null>(null);
+  const [newFolderParent, setNewFolderParent] = useState<string | null>(null);
+  const setNewFolder = (name: string | null, parent: string | null = null) => {
+    setNewFolderState(name);
+    setNewFolderParent(parent);
+    if (parent) openFolder(parent);
+  };
   const [creating, startCreate] = useTransition();
   useEffect(() => setNotes(initialNotes), [initialNotes]);
   useEffect(() => {
@@ -798,7 +823,7 @@ export function NotesWorkspace({
     });
   const addFolder = (name: string) => {
     setNewFolder(null);
-    if (name.trim()) startCreate(async () => void report(await createFolder(name)));
+    if (name.trim()) startCreate(async () => void report(await createFolder(name, newFolderParent)));
   };
 
   // Last edited first while editing (pinned stay on top).
@@ -806,7 +831,7 @@ export function NotesWorkspace({
   const current = open ? (notes.find((n) => n.id === open.id) ?? open) : null;
 
   const isAll = !filter.folder && !filter.tag;
-  const scopeLabel = filter.tag ? `#${filter.tag}` : filter.folder === "none" ? "Inbox" : filter.folder ? (folders.find((f) => f.id === filter.folder)?.name ?? "Folder") : "All notes";
+  const scopeLabel = filter.tag ? `#${filter.tag}` : filter.folder === "none" ? "Inbox" : filter.folder ? (folders.find((f) => f.id === filter.folder)?.path ?? "Folder") : "All notes";
   const navCls = (on: boolean) => `flex items-center gap-2 rounded-[8px] px-2.5 py-[6px] text-[13.5px] ${on ? "bg-surface-3 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`;
 
   const viewToggle = (
@@ -846,7 +871,7 @@ export function NotesWorkspace({
         </Link>
         {folders.map((f) => (
           <Link key={f.id} href={url({ folder: f.id, tag: undefined })} className="chip inline-flex shrink-0 items-center gap-1 whitespace-nowrap" aria-pressed={filter.folder === f.id}>
-            <Folder size={11} /> {f.name}
+            <Folder size={11} /> {f.path}
           </Link>
         ))}
         {tags.map((t) => (
@@ -854,13 +879,13 @@ export function NotesWorkspace({
             #{t.tag}
           </Link>
         ))}
-        <button className="chip inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => setNewFolder("")}>
+        <button className="chip inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => setNewFolder("", filter.folder && filter.folder !== "none" ? filter.folder : null)}>
           <FolderPlus size={11} /> Folder
         </button>
       </div>
       {newFolder !== null && (
         <form className="mt-2 lg:hidden" onSubmit={(e) => (e.preventDefault(), addFolder(newFolder))}>
-          <input autoFocus value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onBlur={() => !newFolder.trim() && setNewFolder(null)} placeholder="New folder name" className="input !text-[14px]" aria-label="New folder name" />
+          <input autoFocus value={newFolder} onChange={(e) => setNewFolderState(e.target.value)} onBlur={() => !newFolder.trim() && setNewFolder(null)} placeholder={newFolderParent ? `New folder inside ${folders.find((f) => f.id === newFolderParent)?.name ?? "folder"}` : "New folder name"} className="input !text-[14px]" aria-label="New folder name" />
         </form>
       )}
       <div className="mt-3 flex items-center justify-between px-1">
@@ -897,11 +922,11 @@ export function NotesWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, desktop]);
 
-  // The open note's folder unfolds in the tree.
+  // The open note's folder unfolds in the tree (with the folders above it).
   useEffect(() => {
     if (!current) return;
-    const id = current.folderId ?? "inbox";
-    setOpenFolders((prev) => (prev.has(id) ? prev : new Set([...prev, id])));
+    openFolder(current.folderId ?? "inbox");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, current?.folderId]);
 
   // Phones: an open note takes the whole screen in both views.
@@ -959,12 +984,12 @@ export function NotesWorkspace({
       </Link>
     );
   };
-  const group = (id: string, label: React.ReactNode, icon: React.ReactNode, items: TreeNote[], href: string, active: boolean, extra?: React.ReactNode) => {
+  const group = (id: string, label: React.ReactNode, icon: React.ReactNode, items: TreeNote[], href: string, active: boolean, extra?: React.ReactNode, depth = 0, sub?: React.ReactNode, subCount = 0) => {
     const isOpen = openFolders.has(id);
     return (
       <div key={id}>
         <div className={`group flex items-center rounded-[7px] ${active ? "bg-surface-3" : "hover:bg-surface-2"}`}>
-          <button className="rounded p-1 pl-1.5 text-ink-3 hover:text-ink" onClick={() => toggleFolder(id)} aria-label={isOpen ? "Collapse" : "Expand"} aria-expanded={isOpen}>
+          <button className="rounded p-1 pl-1.5 text-ink-3 hover:text-ink" style={{ marginLeft: depth * 14 }} onClick={() => toggleFolder(id)} aria-label={isOpen ? "Collapse" : "Expand"} aria-expanded={isOpen}>
             <ChevronRight size={13} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
           </button>
           <Link href={href} className={`flex min-w-0 flex-1 items-center gap-2 py-[5px] pr-2 text-[13.5px] ${active ? "font-medium text-ink" : "text-ink-2 group-hover:text-ink"}`}>
@@ -976,11 +1001,56 @@ export function NotesWorkspace({
         </div>
         {isOpen && (
           <div>
-            {items.map((t) => treeLink(t))}
-            {!items.length && <p className="py-1 text-[12px] text-ink-3" style={{ paddingLeft: 38 }}>Empty</p>}
+            {sub}
+            {items.map((t) => treeLink(t, depth + 1))}
+            {!items.length && !subCount && (
+              <p className="py-1 text-[12px] text-ink-3" style={{ paddingLeft: 38 + depth * 14 }}>
+                Empty
+              </p>
+            )}
           </div>
         )}
       </div>
+    );
+  };
+
+  const newFolderForm = (
+    <form className="mb-1 pr-1" style={{ paddingLeft: 4 + (newFolderParent ? (folders.find((f) => f.id === newFolderParent)?.depth ?? 0) + 1 : 0) * 14 }} onSubmit={(e) => (e.preventDefault(), addFolder(newFolder ?? ""))}>
+      <input
+        autoFocus
+        value={newFolder ?? ""}
+        onChange={(e) => setNewFolderState(e.target.value)}
+        onBlur={() => !newFolder?.trim() && setNewFolder(null)}
+        onKeyDown={(e) => e.key === "Escape" && setNewFolder(null)}
+        placeholder={newFolderParent ? "Subfolder name" : "Folder name"}
+        className="input !py-1 !text-[13px]"
+        aria-label="New folder name"
+      />
+    </form>
+  );
+  /** A folder with its subfolders (recursive), then its notes. */
+  const folderNode = (f: FolderDTO): React.ReactNode => {
+    const subs = folders.filter((c) => c.parentId === f.id);
+    return (
+      <FolderTreeRow key={f.id} f={f} folders={folders} onNewSubfolder={() => setNewFolder("", f.id)}>
+        {(extra) =>
+          group(
+            f.id,
+            f.name,
+            <Folder size={14} className="shrink-0 text-ink-3" />,
+            byFolder(f.id),
+            url({ folder: f.id, tag: undefined, n: undefined }),
+            filter.folder === f.id && !current,
+            extra,
+            f.depth,
+            <>
+              {newFolder !== null && newFolderParent === f.id && newFolderForm}
+              {subs.map(folderNode)}
+            </>,
+            subs.length + (newFolder !== null && newFolderParent === f.id ? 1 : 0),
+          )
+        }
+      </FolderTreeRow>
     );
   };
 
@@ -1019,19 +1089,9 @@ export function NotesWorkspace({
               <FolderPlus size={14} />
             </button>
           </div>
-          {newFolder !== null && (
-            <form className="mb-1 px-1" onSubmit={(e) => (e.preventDefault(), addFolder(newFolder))}>
-              <input autoFocus value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onBlur={() => !newFolder.trim() && setNewFolder(null)} placeholder="Folder name" className="input !py-1 !text-[13px]" aria-label="New folder name" />
-            </form>
-          )}
           {group("inbox", "Inbox", <Inbox size={14} className="shrink-0 text-ink-3" />, byFolder(null), url({ folder: "none", tag: undefined, n: undefined }), filter.folder === "none" && !current)}
-          {folders.map((f) => (
-            <FolderTreeRow key={f.id} f={f} active={filter.folder === f.id && !current}>
-              {(extra) =>
-                group(f.id, f.name, <Folder size={14} className="shrink-0 text-ink-3" />, byFolder(f.id), url({ folder: f.id, tag: undefined, n: undefined }), filter.folder === f.id && !current, extra)
-              }
-            </FolderTreeRow>
-          ))}
+          {newFolder !== null && newFolderParent === null && newFolderForm}
+          {folders.filter((f) => !f.parentId).map(folderNode)}
         </div>
         {tags.length > 0 && (
           <div>
@@ -1117,18 +1177,19 @@ export function NotesWorkspace({
   );
 }
 
-/** A folder in the tree, with rename / delete on hover (passed to the row as `extra`). */
-function FolderTreeRow({ f, active, children }: { f: FolderDTO; active: boolean; children: (extra: React.ReactNode) => React.ReactNode }) {
+/** A folder in the tree, with new subfolder / move / rename / delete on hover (passed to the row as `extra`). */
+function FolderTreeRow({ f, folders, onNewSubfolder, children }: { f: FolderDTO; folders: FolderDTO[]; onNewSubfolder: () => void; children: (extra: React.ReactNode) => React.ReactNode }) {
   const report = useReport();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(f.name);
   const [confirm, setConfirm] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [, start] = useTransition();
-  void active;
   if (editing)
     return (
       <form
-        className="px-1 py-0.5"
+        className="py-0.5 pr-1"
+        style={{ paddingLeft: 4 + f.depth * 14 }}
         onSubmit={(e) => {
           e.preventDefault();
           setEditing(false);
@@ -1138,16 +1199,46 @@ function FolderTreeRow({ f, active, children }: { f: FolderDTO; active: boolean;
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="input !py-1 !text-[13px]" aria-label="Folder name" onBlur={() => setEditing(false)} />
       </form>
     );
+  const targets = folders.filter((t) => canMoveFolder(folders, f.id, t.id) && t.id !== f.parentId);
   const extra = confirm ? (
     <button className="btn btn-danger mr-1 !px-2 !py-0.5 !text-[11px]" onClick={() => start(async () => void report(await deleteFolder(f.id)))} onBlur={() => setConfirm(false)}>
       Delete
     </button>
+  ) : moving ? (
+    <select
+      autoFocus
+      defaultValue=""
+      className="mr-1 max-w-[120px] rounded-[6px] border border-hairline bg-surface px-1 py-0.5 text-[11.5px] text-ink outline-none"
+      aria-label={`Move ${f.name} to`}
+      onBlur={() => setMoving(false)}
+      onChange={(e) => {
+        const v = e.target.value;
+        setMoving(false);
+        if (v) start(async () => void report(await moveFolder(f.id, v === "top" ? null : v)));
+      }}
+    >
+      <option value="">Move to…</option>
+      {f.parentId && <option value="top">Top level</option>}
+      {targets.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.path}
+        </option>
+      ))}
+    </select>
   ) : (
     <span className="mr-1 hidden items-center group-hover:flex group-focus-within:flex">
-      <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label={`Rename ${f.name}`} onClick={() => setEditing(true)}>
+      <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label={`New folder inside ${f.name}`} title="New subfolder" onClick={onNewSubfolder}>
+        <FolderPlus size={12} />
+      </button>
+      {(targets.length > 0 || f.parentId) && (
+        <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label={`Move ${f.name}`} title="Move" onClick={() => setMoving(true)}>
+          <FolderInput size={12} />
+        </button>
+      )}
+      <button className="rounded p-1 text-ink-3 hover:text-ink" aria-label={`Rename ${f.name}`} title="Rename" onClick={() => setEditing(true)}>
         <Pencil size={12} />
       </button>
-      <button className="rounded p-1 text-ink-3 hover:text-bad" aria-label={`Delete ${f.name}`} onClick={() => setConfirm(true)}>
+      <button className="rounded p-1 text-ink-3 hover:text-bad" aria-label={`Delete ${f.name}`} title="Delete" onClick={() => setConfirm(true)}>
         <Trash2 size={12} />
       </button>
     </span>

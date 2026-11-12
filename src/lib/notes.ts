@@ -139,3 +139,60 @@ export function continueList(text: string, selStart: number, selEnd: number) {
   const insert = `\n${indent}${nextBullet} ${box ? "[ ] " : ""}`;
   return { text: text.slice(0, selStart) + insert + text.slice(selEnd), cursor: selStart + insert.length };
 }
+
+/* ------------------------------------------------------------ folder tree */
+
+export type FolderNode = { id: string; name: string; parentId: string | null; position: number };
+export type FolderTreeItem<F extends FolderNode = FolderNode> = F & { depth: number; path: string };
+
+/**
+ * Folders in tree order (depth first, siblings by position then name), with their depth and
+ * "Parent / Child" path. A folder whose parent is missing (or a cycle) is shown at the top level.
+ */
+export function folderTree<F extends FolderNode>(folders: F[]): FolderTreeItem<F>[] {
+  const ids = new Set(folders.map((f) => f.id));
+  const kids = new Map<string | null, F[]>();
+  for (const f of folders) {
+    const p = f.parentId && ids.has(f.parentId) && f.parentId !== f.id ? f.parentId : null;
+    kids.set(p, [...(kids.get(p) ?? []), f]);
+  }
+  const sort = (a: F, b: F) => a.position - b.position || a.name.localeCompare(b.name);
+  const out: FolderTreeItem<F>[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | null, depth: number, prefix: string) => {
+    for (const f of [...(kids.get(parent) ?? [])].sort(sort)) {
+      if (seen.has(f.id)) continue;
+      seen.add(f.id);
+      const path = prefix ? `${prefix} / ${f.name}` : f.name;
+      out.push({ ...f, depth, path });
+      walk(f.id, depth + 1, path);
+    }
+  };
+  walk(null, 0, "");
+  // Cycles never reach the root: put them at the top level.
+  for (const f of folders.filter((f) => !seen.has(f.id)).sort(sort)) {
+    if (seen.has(f.id)) continue;
+    seen.add(f.id);
+    out.push({ ...f, depth: 0, path: f.name });
+    walk(f.id, 1, f.name);
+  }
+  return out;
+}
+
+/** The folder and everything inside it (ids). */
+export function folderAndDescendants(folders: Pick<FolderNode, "id" | "parentId">[], id: string) {
+  const out = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const f of folders) if (f.parentId && out.has(f.parentId) && !out.has(f.id)) (out.add(f.id), (grew = true));
+  }
+  return [...out];
+}
+
+/** A folder can't go inside itself or one of its own subfolders. */
+export function canMoveFolder(folders: Pick<FolderNode, "id" | "parentId">[], id: string, parentId: string | null) {
+  if (parentId === null) return true;
+  if (!folders.some((f) => f.id === parentId)) return false;
+  return !folderAndDescendants(folders, id).includes(parentId);
+}

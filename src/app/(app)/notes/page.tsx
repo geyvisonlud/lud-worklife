@@ -4,17 +4,18 @@ import { PageHeader } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { listFolders, listNotes, listTags, noteDTO, NOTE_INCLUDE } from "@/lib/notes-data";
 import { listCalendars } from "@/lib/data";
-import { noteTitle } from "@/lib/notes";
+import { folderAndDescendants, noteTitle } from "@/lib/notes";
 
 export const dynamic = "force-dynamic";
 
 export default async function NotesPage({ searchParams }: { searchParams: Promise<{ q?: string; folder?: string; tag?: string; n?: string }> }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").slice(0, 200);
-  const folderId = sp.folder === "none" ? null : sp.folder || undefined;
-  const [notes, folders, tags, total, unfiled, open, calendars, treeRows] = await Promise.all([
+  // A folder shows its own notes and those in its subfolders.
+  const folders = await listFolders();
+  const folderId = sp.folder === "none" ? null : sp.folder ? folderAndDescendants(folders, sp.folder) : undefined;
+  const [notes, tags, total, unfiled, open, calendars, treeRows] = await Promise.all([
     listNotes({ q, folderId, tag: sp.tag, pinnedFirst: true }),
-    listFolders(),
     listTags(),
     prisma.note.count(),
     prisma.note.count({ where: { folderId: null } }),

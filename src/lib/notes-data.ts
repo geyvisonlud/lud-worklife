@@ -1,6 +1,6 @@
 import type { Calendar, Event, Note, NoteFolder, Prisma, Project } from "@prisma/client";
 import { prisma } from "./db";
-import { excerpt, noteTitle, parseQuery } from "./notes";
+import { excerpt, folderTree, noteTitle, parseQuery } from "./notes";
 
 export type NoteDTO = {
   id: string;
@@ -20,7 +20,8 @@ export type NoteDTO = {
   createdAt: string;
   updatedAt: string;
 };
-export type FolderDTO = { id: string; name: string; count: number };
+/** In tree order; `path` is "Parent / Child"; `count` is the folder's own notes. */
+export type FolderDTO = { id: string; name: string; count: number; parentId: string | null; depth: number; path: string };
 
 type NoteRow = Note & { folder?: NoteFolder | null; project?: Project | null; event?: (Event & { calendar?: Calendar }) | null };
 export const NOTE_INCLUDE = { folder: true, project: true, event: { include: { calendar: true } } } as const;
@@ -43,11 +44,11 @@ export const noteDTO = (n: NoteRow): NoteDTO => ({
 });
 
 /** Every word must appear in the title, the text or a tag; "#tag" words filter by tag. */
-export function noteWhere(opts: { q?: string; folderId?: string | null; tag?: string }): Prisma.NoteWhereInput {
+export function noteWhere(opts: { q?: string; folderId?: string | null | string[]; tag?: string }): Prisma.NoteWhereInput {
   const { words, tags } = parseQuery(opts.q ?? "");
   if (opts.tag) tags.push(opts.tag);
   return {
-    ...(opts.folderId !== undefined ? { folderId: opts.folderId } : {}),
+    ...(Array.isArray(opts.folderId) ? { folderId: { in: opts.folderId } } : opts.folderId !== undefined ? { folderId: opts.folderId } : {}),
     ...(tags.length ? { tags: { hasEvery: tags } } : {}),
     AND: words.map((w) => ({
       OR: [{ title: { contains: w, mode: "insensitive" as const } }, { body: { contains: w, mode: "insensitive" as const } }, { tags: { has: w.toLowerCase().replace(/^#/, "") } }],
@@ -56,7 +57,7 @@ export function noteWhere(opts: { q?: string; folderId?: string | null; tag?: st
 }
 
 /** Last edited (or added) first; `pinnedFirst` keeps pinned notes on top (the Notes page). */
-export async function listNotes(opts: { q?: string; folderId?: string | null; tag?: string; take?: number; pinnedFirst?: boolean } = {}) {
+export async function listNotes(opts: { q?: string; folderId?: string | null | string[]; tag?: string; take?: number; pinnedFirst?: boolean } = {}) {
   const rows = await prisma.note.findMany({
     where: noteWhere(opts),
     include: NOTE_INCLUDE,
@@ -68,7 +69,7 @@ export async function listNotes(opts: { q?: string; folderId?: string | null; ta
 
 export async function listFolders(): Promise<FolderDTO[]> {
   const rows = await prisma.noteFolder.findMany({ orderBy: [{ position: "asc" }, { name: "asc" }], include: { _count: { select: { notes: true } } } });
-  return rows.map((f) => ({ id: f.id, name: f.name, count: f._count.notes }));
+  return folderTree(rows).map((f) => ({ id: f.id, name: f.name, count: f._count.notes, parentId: f.parentId, depth: f.depth, path: f.path }));
 }
 
 /** Tags in use, most used first. */

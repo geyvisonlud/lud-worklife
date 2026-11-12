@@ -309,11 +309,17 @@ model BibleDay {
 
 /// A folder of notes (one level; deleting it moves its notes to "No folder").
 model NoteFolder {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   name      String
-  position  Float    @default(0)
-  createdAt DateTime @default(now())
+  position  Float        @default(0)
+  /// Folders inside folders: null = top level.
+  parentId  String?
+  parent    NoteFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  NoteFolder[] @relation("FolderTree")
+  createdAt DateTime     @default(now())
   notes     Note[]
+
+  @@index([parentId])
 }
 
 /// A note written in Markdown. Listed by `updatedAt` (last edited or added first).

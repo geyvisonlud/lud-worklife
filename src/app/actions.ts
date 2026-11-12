@@ -19,7 +19,7 @@ import { gmailLink, taskNotesFromEmail } from "@/lib/email";
 import { scanAllEmail } from "@/lib/email-sync";
 import { findQuote, isQuoteKind } from "@/lib/daily";
 import { PLAN_DAYS } from "@/lib/bible-plan";
-import { normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
+import { canMoveFolder, normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
 import { buildEvent } from "@/lib/events";
 import { extractLinks } from "@/lib/read-later";
 import { importLinks, newCaptureToken, readerView, saveToReadLater, type ReaderView } from "@/lib/read-later-data";
@@ -510,11 +510,12 @@ export async function findNotes(q: string): Promise<NoteDTO[]> {
   return listNotes({ q: clean(q, 200), take: 8 });
 }
 
-export async function createFolder(name: string): Promise<ActionResult & { id?: string }> {
+export async function createFolder(name: string, parentId: string | null = null): Promise<ActionResult & { id?: string }> {
   const n = clean(name, 60);
   if (!n) return fail("Give the folder a name.");
-  const last = await prisma.noteFolder.findFirst({ orderBy: { position: "desc" } });
-  const f = await prisma.noteFolder.create({ data: { name: n, position: (last?.position ?? 0) + 1024 } });
+  if (parentId && !(await prisma.noteFolder.findUnique({ where: { id: parentId } }))) return fail("That folder no longer exists.");
+  const last = await prisma.noteFolder.findFirst({ where: { parentId }, orderBy: { position: "desc" } });
+  const f = await prisma.noteFolder.create({ data: { name: n, parentId, position: (last?.position ?? 0) + 1024 } });
   return { ...done(), id: f.id };
 }
 
@@ -525,10 +526,26 @@ export async function renameFolder(id: string, name: string) {
   return done();
 }
 
-/** Its notes stay, without a folder. */
+/** Puts a folder inside another one (or at the top level with null). */
+export async function moveFolder(id: string, parentId: string | null) {
+  const all = await prisma.noteFolder.findMany({ select: { id: true, name: true, parentId: true, position: true } });
+  if (!all.some((f) => f.id === id)) return fail("That folder no longer exists.");
+  if (!canMoveFolder(all, id, parentId)) return fail("A folder can't go inside itself.");
+  const last = await prisma.noteFolder.findFirst({ where: { parentId }, orderBy: { position: "desc" } });
+  await prisma.noteFolder.update({ where: { id }, data: { parentId, position: (last?.position ?? 0) + 1024 } });
+  return done("Folder moved");
+}
+
+/** Its notes and subfolders move up one level (to the Inbox / top level for a top folder). */
 export async function deleteFolder(id: string) {
-  await prisma.noteFolder.deleteMany({ where: { id } });
-  return done("Folder deleted — its notes are in the Inbox");
+  const f = await prisma.noteFolder.findUnique({ where: { id } });
+  if (!f) return done();
+  await prisma.$transaction([
+    prisma.note.updateMany({ where: { folderId: id }, data: { folderId: f.parentId } }),
+    prisma.noteFolder.updateMany({ where: { parentId: id }, data: { parentId: f.parentId } }),
+    prisma.noteFolder.delete({ where: { id } }),
+  ]);
+  return done(f.parentId ? "Folder deleted — its notes moved up a level" : "Folder deleted — its notes are in the Inbox");
 }
 
 /** A project named after the note, with its text as the description (the note stays, linked to it). */
