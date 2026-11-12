@@ -6,7 +6,7 @@ import { ArrowRight, MoreHorizontal, Plus } from "lucide-react";
 import { projectColor } from "@/lib/colors";
 import { formatDay } from "@/lib/dates";
 import type { ProjectDTO, TaskDTO } from "@/lib/data";
-import { stageLabel, statusLabel } from "@/lib/kanban";
+import { columnLabel } from "@/lib/kanban";
 import { compareTasks } from "@/lib/tasks";
 import { filterTasks, projectCards, type TaskFilter } from "@/lib/work-overview";
 import { TaskCheck } from "./TaskBits";
@@ -20,7 +20,7 @@ import { NotionMark } from "./ui";
  * then its figures (open tasks, done, next due) and a progress bar.
  */
 export function ProjectCards({ projects, tasks }: { projects: ProjectDTO[]; tasks: TaskDTO[] }) {
-  const { today } = useWork();
+  const { today, projectColumns } = useWork();
   const cards = projectCards(projects, tasks, today);
   if (!cards.length) {
     return (
@@ -60,7 +60,7 @@ export function ProjectCards({ projects, tasks }: { projects: ProjectDTO[]; task
                 <div className="relative flex h-[104px] items-center justify-center" style={{ background: `linear-gradient(135deg, ${c.to} 0%, ${c.hex} 115%)` }}>
                   <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2 py-[3px] text-[11.5px] font-medium text-[#151513] shadow-sm">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.hex }} />
-                    {p.taskCount ? `${Math.round(pct * 100)}% done` : stageLabel(p.stage)}
+                    {p.taskCount ? `${Math.round(pct * 100)}% done` : columnLabel(projectColumns, p.stage)}
                   </span>
                   <span className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-[9px] bg-white/90 text-[#151513] shadow-sm" aria-hidden>
                     <MoreHorizontal size={15} />
@@ -73,7 +73,7 @@ export function ProjectCards({ projects, tasks }: { projects: ProjectDTO[]; task
                   <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">{p.name}</div>
                   <div className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-[12px] text-ink-2">
                     {p.source === "notion" && <NotionMark size={11} />}
-                    <span className="truncate">{p.notionParent ?? stageLabel(p.stage)}</span>
+                    <span className="truncate">{p.notionParent ?? columnLabel(projectColumns, p.stage)}</span>
                   </div>
                   <dl className="mt-3 grid grid-cols-3 gap-2">
                     <div>
@@ -131,7 +131,7 @@ function Pill({ cls, dot, children }: { cls: string; dot: string; children: Reac
 
 /** Notion-style table of open tasks, in projects or not, with a filter. Rows open the task editor. */
 export function TaskTable({ tasks, projects, limit = 8 }: { tasks: TaskDTO[]; projects: ProjectDTO[]; limit?: number }) {
-  const { today, openTask } = useWork();
+  const { today, openTask, taskColumns } = useWork();
   const [filter, setFilter] = useState<TaskFilter>("all");
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const rows = useMemo(() => filterTasks(tasks, filter).sort(compareTasks), [tasks, filter]);
@@ -217,7 +217,7 @@ export function TaskTable({ tasks, projects, limit = 8 }: { tasks: TaskDTO[]; pr
                   </td>
                   <td className="py-2.5 pl-3 pr-[var(--pad-x)]">
                     <Pill cls={st.cls} dot={st.dot}>
-                      {statusLabel(t.status)}
+                      {columnLabel(taskColumns, t.status)}
                     </Pill>
                   </td>
                 </tr>

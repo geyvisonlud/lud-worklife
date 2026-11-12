@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { projectColor } from "@/lib/colors";
+import { PROJECT_COLORS, projectColor } from "@/lib/colors";
 
 export function PageHeader({ eyebrow, title, children }: { eyebrow?: React.ReactNode; title: React.ReactNode; children?: React.ReactNode }) {
   return (
@@ -120,3 +120,6 @@ export function ProgressBar({ pct, color }: { pct: number; color: string }) {
 
 /** "Assigned · Owner" / "Mentioned" from Project.notionReason. */
 export const notionReasonLabel = (r: string | null) => (r?.startsWith("assigned:") ? `Assigned · ${r.slice(9)}` : r === "mentioned" ? "Mentioned" : "From Notion");
+
+/** A board column's dot color: a PROJECT_COLORS key, or "gray" (the muted ink token). */
+export const columnColor = (key: string) => (key in PROJECT_COLORS ? PROJECT_COLORS[key].hex : "var(--ink-3)");

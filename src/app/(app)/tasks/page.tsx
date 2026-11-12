@@ -1,10 +1,11 @@
 import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import Link from "next/link";
 import { KanbanSquare, List } from "lucide-react";
-import { TaskBoard } from "@/components/Kanban";
+import { boardStats } from "@/lib/tasks";
+import { TaskBoardView } from "@/components/Kanban";
 import { OpenTask } from "@/components/OpenTask";
 import { NewTaskButton, QuickAdd, TaskRow } from "@/components/TaskBits";
-import { Card, PageHeader } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { projectColor } from "@/lib/colors";
 import { appTimeZone } from "@/lib/dates";
 import { listProjects, listTasks, today } from "@/lib/data";
@@ -12,19 +13,21 @@ import { BUCKETS, groupTasks } from "@/lib/tasks";
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ view?: string; project?: string; task?: string; done?: string }> }) {
   const sp = await searchParams;
-  const view = sp.view === "board" ? "board" : "list";
+  const view = sp.view === "list" ? "list" : "board";
   const showDone = sp.done === "1";
   const projectFilter = sp.project === "inbox" ? null : sp.project;
   const tz = appTimeZone();
   const day = today();
   const [tasks, projects] = await Promise.all([
     listTasks({
-      ...(sp.project ? { projectId: projectFilter ?? null } : {}),
-      ...(showDone || view === "board" ? {} : { OR: [{ status: { not: "done" } }, { completedAt: { gte: new Date(Date.now() - 2 * 86400_000) } }] }),
+      ...(sp.project && view === "list" ? { projectId: projectFilter ?? null } : {}),
+      // Board: open tasks + done in the last 30 days; list: + done in the last 2 days (or all).
+      ...(showDone ? {} : { OR: [{ status: { not: "done" } }, { completedAt: { gte: new Date(Date.now() - (view === "board" ? 30 : 2) * 86400_000) } }] }),
     }),
     listProjects(),
   ]);
   const g = groupTasks(tasks, day, tz);
+  const stats = boardStats(tasks, day);
   const open = sp.task ? (await listTasks({ id: sp.task }))[0] ?? null : null;
   const q = (o: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -33,44 +36,65 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     const s = p.toString();
     return `/tasks${s ? `?${s}` : ""}`;
   };
-  const counts = new Map<string | null, number>();
-  for (const t of tasks) if (t.status !== "done") counts.set(t.projectId, (counts.get(t.projectId) ?? 0) + 1);
 
   return (
     <div>
       <OpenTask task={open} />
       <GoogleTasksAutoSync />
-      <PageHeader eyebrow={`${tasks.filter((t) => t.status !== "done").length} open`} title="Tasks">
-        <div className="seg-sm" role="group" aria-label="View">
-          <Link href={q({ view: undefined })} aria-pressed={view === "list"} className="inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px]" style={view === "list" ? { background: "var(--surface)", boxShadow: "0 1px 2px rgba(0,0,0,.08)" } : {}}>
-            <List size={13} /> List
-          </Link>
-          <Link href={q({ view: "board" })} aria-pressed={view === "board"} className="inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px]" style={view === "board" ? { background: "var(--surface)", boxShadow: "0 1px 2px rgba(0,0,0,.08)" } : {}}>
-            <KanbanSquare size={13} /> Board
-          </Link>
+      <header className="animate-in mb-5 flex flex-wrap items-end gap-3">
+        <div className="mr-auto">
+          <h1 className="text-[30px] font-semibold tracking-[-0.03em] md:text-[34px]">Tasks</h1>
+          <p className="num mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-ink-2">
+            <span>
+              <b className="font-semibold text-ink">{stats.open}</b> open
+            </span>
+            {stats.overdue > 0 && <span className="text-bad">{stats.overdue} overdue</span>}
+            <span>
+              <b className="font-semibold text-ink">{stats.week}</b> due this week
+            </span>
+          </p>
         </div>
-        <NewTaskButton projectId={projectFilter ?? undefined} />
-      </PageHeader>
-
-      <nav className="animate-in mb-5 flex gap-2 overflow-x-auto pb-1" aria-label="Filter by project">
-        <Link href={q({ project: undefined })} className="pill shrink-0" aria-current={!sp.project ? "page" : undefined}>
-          All
-        </Link>
-        <Link href={q({ project: "inbox" })} className="pill shrink-0" aria-current={sp.project === "inbox" ? "page" : undefined}>
-          No project
-        </Link>
-        {projects
-          .filter((p) => p.stage !== "done")
-          .map((p) => (
-            <Link key={p.id} href={q({ project: p.id })} className="pill shrink-0" aria-current={sp.project === p.id ? "page" : undefined}>
-              <span className="h-2 w-2 rounded-full" style={{ background: projectColor(p.color).hex }} />
-              {p.emoji} {p.name}
+        <div className="inline-flex rounded-[10px] bg-surface-2 p-[3px]" role="group" aria-label="View">
+          {(
+            [
+              ["board", "Board", KanbanSquare],
+              ["list", "List", List],
+            ] as const
+          ).map(([v, label, Icon]) => (
+            <Link
+              key={v}
+              href={q({ view: v === "board" ? undefined : v })}
+              aria-pressed={view === v}
+              className={`inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-[5px] text-[13px] font-medium ${view === v ? "bg-surface text-ink shadow-[var(--shadow)]" : "text-ink-2 hover:text-ink"}`}
+            >
+              <Icon size={14} /> {label}
             </Link>
           ))}
-      </nav>
+        </div>
+        <NewTaskButton projectId={projectFilter ?? undefined} />
+      </header>
+
+      {view === "list" && (
+        <nav className="animate-in mb-5 flex gap-2 overflow-x-auto pb-1" aria-label="Filter by project">
+          <Link href={q({ project: undefined })} className="pill shrink-0" aria-current={!sp.project ? "page" : undefined}>
+            All
+          </Link>
+          <Link href={q({ project: "inbox" })} className="pill shrink-0" aria-current={sp.project === "inbox" ? "page" : undefined}>
+            No project
+          </Link>
+          {projects
+            .filter((p) => p.stage !== "done")
+            .map((p) => (
+              <Link key={p.id} href={q({ project: p.id })} className="pill shrink-0" aria-current={sp.project === p.id ? "page" : undefined}>
+                <span className="h-2 w-2 rounded-full" style={{ background: projectColor(p.color).hex }} />
+                {p.emoji} {p.name}
+              </Link>
+            ))}
+        </nav>
+      )}
 
       {view === "board" ? (
-        <TaskBoard tasks={tasks} projectId={sp.project ? (projectFilter ?? undefined) : undefined} />
+        <TaskBoardView tasks={tasks} initialProject={sp.project === "inbox" ? "none" : sp.project} />
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-5">

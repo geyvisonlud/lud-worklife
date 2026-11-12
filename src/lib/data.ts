@@ -1,5 +1,6 @@
 import type { Calendar, CalendarAccount, Event, Prisma, Project, Task } from "@prisma/client";
 import { prisma } from "./db";
+import { mergeColumns, type Board, type BoardColumnDTO } from "./kanban";
 import { addDays, appTimeZone, dayBounds, ymdInTz } from "./dates";
 import type { SimpleBlock } from "./notion";
 import { summarize } from "./habits";
@@ -210,4 +211,10 @@ export async function bibleState() {
   if (!start) return { started: false as const, done };
   const current = planDay(start, day);
   return { started: true as const, start, current, done, reading: current ? readingFor(current) : null, progress: progress(done, current), catchUp: nextUnread(done, current) };
+}
+
+/** The Tasks or Projects board columns (built-in + custom), in order. */
+export async function boardColumns(board: Board): Promise<BoardColumnDTO[]> {
+  const rows = await prisma.boardColumn.findMany({ where: { board } });
+  return mergeColumns(board, rows);
 }

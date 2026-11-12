@@ -45,3 +45,49 @@ describe("quick add", () => {
     expect(parseQuickAdd("Just a task", TODAY).title).toBe("Just a task");
   });
 });
+
+import { boardStats, EMPTY_FILTER, filterBoardTasks, flagDate } from "./tasks";
+
+describe("board toolbar", () => {
+  const t = (title: string, o: Partial<{ priority: number; projectId: string | null; dueDate: string | null; status: string; position: number; notes: string }> = {}) => ({
+    title,
+    notes: o.notes ?? null,
+    priority: o.priority ?? 0,
+    projectId: o.projectId ?? null,
+    dueDate: o.dueDate ?? null,
+    status: o.status ?? "todo",
+    position: o.position ?? 0,
+  });
+  const tasks = [
+    t("Write brief", { priority: 3, projectId: "p1", dueDate: "2026-11-04", position: 3 }),
+    t("Call bank", { priority: 1, dueDate: "2026-11-05", position: 1 }),
+    t("Plan trip", { priority: 2, projectId: "p2", dueDate: "2026-11-09", position: 2, notes: "flights" }),
+    t("Someday", { position: 4 }),
+    t("Old", { status: "done", dueDate: "2026-11-01", position: 5 }),
+  ];
+  const names = (id: string) => (id === "p1" ? "Website" : "Travel");
+  const ids = (f: Partial<typeof EMPTY_FILTER>) => filterBoardTasks(tasks, { ...EMPTY_FILTER, ...f }, TODAY, names).map((x) => x.title);
+
+  it("searches title, notes and project", () => {
+    expect(ids({ q: "flights" })).toEqual(["Plan trip"]);
+    expect(ids({ q: "website" })).toEqual(["Write brief"]);
+  });
+  it("filters by priority, project and due", () => {
+    expect(ids({ priority: "3" })).toEqual(["Write brief"]);
+    expect(ids({ project: "none" })).toEqual(["Call bank", "Someday", "Old"]);
+    expect(ids({ due: "overdue" })).toEqual(["Write brief"]);
+    expect(ids({ due: "today" })).toEqual(["Call bank"]);
+    expect(ids({ due: "week" })).toEqual(["Write brief", "Call bank", "Plan trip"]);
+    expect(ids({ due: "none" })).toEqual(["Someday"]);
+  });
+  it("sorts", () => {
+    expect(ids({ sort: "due" })).toEqual(["Old", "Write brief", "Call bank", "Plan trip", "Someday"]);
+    expect(ids({ sort: "priority" }).slice(0, 3)).toEqual(["Write brief", "Plan trip", "Call bank"]);
+  });
+  it("counts and labels", () => {
+    expect(boardStats(tasks, TODAY)).toEqual({ open: 4, overdue: 1, week: 2 });
+    expect(flagDate("2026-11-06", TODAY)).toBe("Tomorrow");
+    expect(flagDate("2026-11-20", TODAY)).toBe("Nov 20");
+    expect(flagDate("2027-01-02", TODAY)).toBe("Jan 2, 2027");
+  });
+});

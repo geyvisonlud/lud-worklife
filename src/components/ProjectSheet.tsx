@@ -5,18 +5,22 @@ import { useRouter } from "next/navigation";
 import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { createProject, deleteProject, refreshNotionProject, updateProject } from "@/app/actions";
 import { PROJECT_COLORS } from "@/lib/colors";
-import { PROJECT_STAGES } from "@/lib/kanban";
 import type { ProjectDTO } from "@/lib/data";
 import { Field, Sheet } from "./Sheet";
-import { useReport } from "./TaskSheet";
+import { useReport, useWork } from "./TaskSheet";
+import { columnColor } from "./ui";
 
 const EMOJIS = ["🚀", "📊", "🎯", "💡", "🛠️", "📝", "🌐", "🎄", "📚", "💳", "🏠", "✈️", "🎨", "🧪", "📣", "🤝"];
 
-export function ProjectButton({ project }: { project?: ProjectDTO }) {
+export function ProjectButton({ project, compact }: { project?: ProjectDTO; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      {project ? (
+      {compact ? (
+        <button className="rounded-[6px] p-1 text-ink-3 hover:bg-surface-2 hover:text-ink" onClick={() => setOpen(true)} aria-label="New project" title="New project">
+          <Plus size={14} />
+        </button>
+      ) : project ? (
         <button className="btn btn-secondary" onClick={() => setOpen(true)}>
           <Pencil size={14} /> Edit
         </button>
@@ -32,15 +36,25 @@ export function ProjectButton({ project }: { project?: ProjectDTO }) {
   );
 }
 
-function ProjectForm({ project, onDone }: { project?: ProjectDTO; onDone: () => void }) {
+/** The new/edit project sheet, controlled (the boards open it with a column preset). */
+export function ProjectSheet({ open, onClose, stage, project }: { open: boolean; onClose: () => void; stage?: string; project?: ProjectDTO }) {
+  return (
+    <Sheet open={open} onClose={onClose} title={project ? "Edit project" : "New project"}>
+      {open && <ProjectForm project={project} stage={stage} onDone={onClose} />}
+    </Sheet>
+  );
+}
+
+function ProjectForm({ project, onDone, stage: initialStage }: { project?: ProjectDTO; onDone: () => void; stage?: string }) {
   const router = useRouter();
   const report = useReport();
+  const { projectColumns } = useWork();
   const [pending, start] = useTransition();
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
   const [emoji, setEmoji] = useState(project?.emoji ?? "🚀");
   const [color, setColor] = useState(project?.color ?? "blue");
-  const [stage, setStage] = useState(project?.stage ?? "planned");
+  const [stage, setStage] = useState(project?.stage ?? initialStage ?? "planned");
   const [dueDate, setDueDate] = useState(project?.dueDate ?? "");
   const [confirm, setConfirm] = useState(false);
 
@@ -90,13 +104,16 @@ function ProjectForm({ project, onDone }: { project?: ProjectDTO; onDone: () => 
         </div>
       </Field>
       <Field label="Stage" hint={project?.source === "notion" ? "Changing it here stops Notion's status from moving this card." : undefined}>
-        <div className="segmented" role="radiogroup">
-          {PROJECT_STAGES.map((s) => (
-            <label key={s.key}>
-              <input type="radio" name="stage" checked={stage === s.key} onChange={() => setStage(s.key)} />
-              <span className="!text-[13px]">{s.label}</span>
-            </label>
-          ))}
+        <div className="flex flex-wrap gap-1.5" role="radiogroup">
+          {projectColumns
+            .filter((c) => !c.hidden || c.key === stage)
+            .map((c) => (
+              <label key={c.key} className="chip inline-flex cursor-pointer items-center gap-1.5 has-[:checked]:!border-ink has-[:checked]:!bg-ink has-[:checked]:!text-surface">
+                <input type="radio" name="stage" checked={stage === c.key} onChange={() => setStage(c.key)} className="sr-only" />
+                <span className="h-2 w-2 rounded-full" style={{ background: columnColor(c.color) }} />
+                {c.label}
+              </label>
+            ))}
         </div>
       </Field>
       <Field label="Target date">

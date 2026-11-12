@@ -40,6 +40,15 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 - Days are `YYYY-MM-DD` strings in `APP_TIMEZONE`; instants are `Date`. Use `lib/dates.ts` (`zonedToUtc`, `ymdInTz`,
   `wallMinutes`) — never `new Date().getHours()`. All-day events are stored at UTC midnight of their date.
 - Kanban order: fractional `position` (`positionAt`), only the moved card is rewritten.
+- Boards (Tasks, Projects, a project's tasks) share `Board` in `Kanban.tsx`: lanes with dot/name/count/⋯ menu (rename, color, move
+  left/right, hide built-in / delete custom), "+ Add" on top, cards with priority pill, project, title, description, checklist
+  segments (`checklist`/`cardDescription` parse "- [ ]" lines in task notes), due flag; "Show N more" after 6; "+ Add column" and
+  "Hidden columns" at the end; a card's ⋯ menu moves it (phones). Columns: `BoardColumn` rows (board tasks|projects) merged with the
+  built-ins by `mergeColumns` (built-ins get a row only when changed; custom keys "c_…"; Done can't be hidden; deleting a custom
+  column moves its cards to To do / Planned). Status/stage validation = `isColumnOf` (built-in or existing custom key). Columns are in
+  `useWork().taskColumns/projectColumns` — label any status with `columnLabel`. Tasks opens on Board (`?view=list` for the list);
+  toolbar filters/sort are client-side (`filterBoardTasks`, `boardStats`, `flagDate` in lib/tasks.ts, tested). The sidebar lists
+  projects that aren't done (open task counts, + new project).
 - Google colors: store the *current* palette color (`googleCalendarColor`); `customColor` is a local override.
 - Task time blocks mirrored to Google carry `extendedProperties.private.ludTaskId`; `mapEvent` skips them so they aren't shown twice.
 - Notion: read-only. `importPage` decides by `assignedVia` (People property) or `@mention`; `stageOverridden` stops Notion's

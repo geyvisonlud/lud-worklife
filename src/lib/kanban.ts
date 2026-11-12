@@ -58,3 +58,57 @@ export function progress(tasks: { status: string }[]) {
 
 export const stageLabel = (s: string) => PROJECT_STAGES.find((x) => x.key === s)?.label ?? s;
 export const statusLabel = (s: string) => TASK_STATUSES.find((x) => x.key === s)?.label ?? s;
+
+/* ------------------------------------------------------------ board columns */
+
+export type Board = "tasks" | "projects";
+/** A column as shown on a board. `color` is a PROJECT_COLORS key or "gray". */
+export type BoardColumnDTO = { key: string; label: string; color: string; position: number; hidden: boolean; builtIn: boolean };
+type ColumnRow = { key: string; label: string; color: string; position: number; hidden: boolean };
+
+const BUILT_IN_COLORS: Record<string, string> = { backlog: "gray", todo: "gray", doing: "blue", done: "green", planned: "gray", active: "blue", hold: "amber" };
+
+export const builtInColumns = (board: Board): BoardColumnDTO[] =>
+  (board === "tasks" ? TASK_STATUSES : PROJECT_STAGES).map((c, i) => ({ key: c.key, label: c.label, color: BUILT_IN_COLORS[c.key] ?? "gray", position: (i + 1) * 1024, hidden: false, builtIn: true }));
+
+/** Built-in columns (with the user's changes, if any) plus custom ones, in board order. */
+export function mergeColumns(board: Board, rows: ColumnRow[]): BoardColumnDTO[] {
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const builtIn = builtInColumns(board).map((c) => {
+    const r = byKey.get(c.key);
+    return r ? { ...c, label: r.label || c.label, color: r.color, position: r.position, hidden: r.hidden && c.key !== "done" } : c;
+  });
+  const custom = rows.filter((r) => isCustomColumn(r.key)).map((r) => ({ ...r, builtIn: false }));
+  return [...builtIn, ...custom].sort((a, b) => a.position - b.position || a.label.localeCompare(b.label));
+}
+
+export const isCustomColumn = (key: string) => /^c_[a-z0-9]{4,24}$/.test(key);
+export const newColumnKey = (rand = Math.random) => `c_${Math.floor(rand() * 36 ** 8).toString(36).padStart(8, "0")}`;
+/** A column a card can be in: a built-in one or an existing custom one. */
+export const isColumnOf = (board: Board, key: unknown, custom: string[] = []): key is string =>
+  typeof key === "string" && ((board === "tasks" ? isTaskStatus(key) : isProjectStage(key)) || (isCustomColumn(key) && custom.includes(key)));
+export const columnLabel = (columns: { key: string; label: string }[], key: string) =>
+  columns.find((c) => c.key === key)?.label ?? (isCustomColumn(key) ? "Other" : (board(key) === "projects" ? stageLabel(key) : statusLabel(key)));
+const board = (key: string): Board => (isProjectStage(key) && !isTaskStatus(key) ? "projects" : "tasks");
+
+/** Position for a column moved to `index` among the other columns (in board order). */
+export const columnPositionAt = (others: { position: number }[], index: number) => positionAt(others, index);
+
+/** Checklist progress in task notes ("- [ ]" / "- [x]" lines). */
+export function checklist(notes: string | null | undefined) {
+  const lines = (notes ?? "").split("\n").filter((l) => /^\s*[-*+]\s+\[[ xX]\]/.test(l));
+  return { total: lines.length, done: lines.filter((l) => /\[[xX]\]/.test(l)).length };
+}
+
+/** The note's first line that isn't a checklist item — a card's description. */
+export function cardDescription(notes: string | null | undefined) {
+  return (
+    (notes ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !/^[-*+]\s+\[[ xX]\]/.test(l))
+      .join(" ")
+      .replace(/[#*_`>]/g, "")
+      .slice(0, 220) || null
+  );
+}

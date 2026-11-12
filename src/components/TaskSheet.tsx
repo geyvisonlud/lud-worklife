@@ -4,9 +4,10 @@ import { createContext, useCallback, useContext, useMemo, useState, useTransitio
 import { CalendarClock, ExternalLink, Trash2, X } from "lucide-react";
 import { createTask, deleteTask, updateTask, type ActionResult } from "@/app/actions";
 import { formatDuration, minutesInTz, ymdInTz, zonedToUtc } from "@/lib/dates";
-import { PRIORITIES, TASK_STATUSES } from "@/lib/kanban";
+import { PRIORITIES, type BoardColumnDTO } from "@/lib/kanban";
 import type { TaskDTO } from "@/lib/data";
 import { Field, Sheet } from "./Sheet";
+import { columnColor } from "./ui";
 import { GoogleMark, NotionMark } from "./ui";
 
 export type ProjectOption = { id: string; name: string; emoji: string | null; color: string };
@@ -19,6 +20,9 @@ type Ctx = {
   projects: ProjectOption[];
   defaultDuration: number;
   googleTarget: string | null;
+  /** Board columns (built-in + custom) of the Tasks and Projects boards. */
+  taskColumns: BoardColumnDTO[];
+  projectColumns: BoardColumnDTO[];
   openTask: (task: TaskDTO | null, defaults?: Defaults) => void;
   toast: (msg: string, tone?: "ok" | "bad") => void;
 };
@@ -38,6 +42,8 @@ export function WorkProvider({
   projects,
   defaultDuration,
   googleTarget,
+  taskColumns,
+  projectColumns,
   children,
 }: {
   tz: string;
@@ -45,6 +51,8 @@ export function WorkProvider({
   projects: ProjectOption[];
   defaultDuration: number;
   googleTarget: string | null;
+  taskColumns: BoardColumnDTO[];
+  projectColumns: BoardColumnDTO[];
   children: React.ReactNode;
 }) {
   const [editing, setEditing] = useState<{ task: TaskDTO | null; defaults: Defaults; key: number } | null>(null);
@@ -56,7 +64,10 @@ export function WorkProvider({
     setTimeout(() => setToast((t) => (t?.key === key ? null : t)), 4500);
   }, []);
   const openTask = useCallback((task: TaskDTO | null, defaults: Defaults = {}) => setEditing({ task, defaults, key: Date.now() }), []);
-  const value = useMemo(() => ({ tz, today, projects, defaultDuration, googleTarget, openTask, toast }), [tz, today, projects, defaultDuration, googleTarget, openTask, toast]);
+  const value = useMemo(
+    () => ({ tz, today, projects, defaultDuration, googleTarget, taskColumns, projectColumns, openTask, toast }),
+    [tz, today, projects, defaultDuration, googleTarget, taskColumns, projectColumns, openTask, toast],
+  );
 
   return (
     <WorkContext.Provider value={value}>
@@ -98,7 +109,7 @@ export function useReport() {
 const pad = (n: number) => String(n).padStart(2, "0");
 
 function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: Defaults; onDone: () => void }) {
-  const { tz, projects, defaultDuration, googleTarget } = useWork();
+  const { tz, projects, defaultDuration, googleTarget, taskColumns } = useWork();
   const report = useReport();
   const [pending, start] = useTransition();
   const init = { ...defaults, ...(task ?? {}) };
@@ -166,13 +177,16 @@ function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: 
       </div>
 
       <Field label="Status">
-        <div className="segmented" role="radiogroup">
-          {TASK_STATUSES.map((s) => (
-            <label key={s.key}>
-              <input type="radio" name="status" value={s.key} checked={status === s.key} onChange={() => setStatus(s.key)} />
-              <span className="!text-[13px]">{s.label}</span>
-            </label>
-          ))}
+        <div className="flex flex-wrap gap-1.5" role="radiogroup">
+          {taskColumns
+            .filter((c) => !c.hidden || c.key === status)
+            .map((c) => (
+              <label key={c.key} className="chip inline-flex cursor-pointer items-center gap-1.5 has-[:checked]:!border-ink has-[:checked]:!bg-ink has-[:checked]:!text-surface">
+                <input type="radio" name="status" value={c.key} checked={status === c.key} onChange={() => setStatus(c.key)} className="sr-only" />
+                <span className="h-2 w-2 rounded-full" style={{ background: columnColor(c.color) }} />
+                {c.label}
+              </label>
+            ))}
         </div>
       </Field>
 

@@ -8,7 +8,7 @@ import { SESSION_COOKIE, SESSION_MAX_AGE, allowedEmails, createSessionToken, pas
 import { encrypt } from "@/lib/crypto";
 import { isHex, isProjectColor } from "@/lib/colors";
 import { appTimeZone, isYmd, ymdInTz, zonedToUtc } from "@/lib/dates";
-import { isProjectStage, isTaskStatus, positionAt } from "@/lib/kanban";
+import { isColumnOf, isCustomColumn, mergeColumns, isProjectStage, isTaskStatus, newColumnKey, positionAt, type Board } from "@/lib/kanban";
 import { accessToken, mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
 import { googleApi } from "@/lib/google";
 import { deleteGoogleTask, pushGoogleTask, syncAllTaskLists, syncTaskLists, unlinkLists } from "@/lib/google-tasks-sync";
@@ -66,12 +66,18 @@ export type TaskInput = {
   scheduledStart?: string | null;
 };
 
-function taskData(input: TaskInput) {
+/** Custom column keys of a board, fetched only when `key` is one (built-in keys need no lookup). */
+async function customKeys(board: Board, key: unknown) {
+  if (typeof key !== "string" || !isCustomColumn(key)) return [];
+  return (await prisma.boardColumn.findMany({ where: { board, key }, select: { key: true } })).map((c) => c.key);
+}
+
+function taskData(input: TaskInput, custom: string[] = []) {
   const data: Record<string, unknown> = {};
   if (input.title !== undefined) data.title = clean(input.title, 300) || "Untitled task";
   if (input.notes !== undefined) data.notes = clean(input.notes, 5000) || null;
   if (input.projectId !== undefined) data.projectId = input.projectId || null;
-  if (input.status !== undefined && isTaskStatus(input.status)) {
+  if (input.status !== undefined && isColumnOf("tasks", input.status, custom)) {
     data.status = input.status;
     data.completedAt = input.status === "done" ? new Date() : null;
   }
@@ -87,10 +93,11 @@ function taskData(input: TaskInput) {
 
 export async function createTask(input: TaskInput): Promise<ActionResult & { id?: string }> {
   if (!clean(input.title)) return fail("Give the task a title.");
-  const status = isTaskStatus(input.status) ? input.status : "todo";
+  const custom = await customKeys("tasks", input.status);
+  const status = isColumnOf("tasks", input.status, custom) ? input.status : "todo";
   // New tasks go to the top of their column.
   const first = await prisma.task.findFirst({ where: { status, projectId: input.projectId || null }, orderBy: { position: "asc" } });
-  const t = await prisma.task.create({ data: { title: "", ...taskData({ ...input, status }), position: (first?.position ?? 1024) - 1024 } as never });
+  const t = await prisma.task.create({ data: { title: "", ...taskData({ ...input, status }, custom), position: (first?.position ?? 1024) - 1024 } as never });
   const warn = t.scheduledStart ? await mirrorTask(t.id) : null;
   return { ...done(warn), id: t.id };
 }
@@ -98,7 +105,7 @@ export async function createTask(input: TaskInput): Promise<ActionResult & { id?
 export async function updateTask(id: string, input: TaskInput): Promise<ActionResult> {
   const before = await prisma.task.findUnique({ where: { id } });
   if (!before) return fail("That task no longer exists.");
-  const data = taskData(input);
+  const data = taskData(input, await customKeys("tasks", input.status));
   if (data.status === before.status) delete data.completedAt; // keep the original completion time
   const after = await prisma.task.update({ where: { id }, data });
   const timeChanged =
@@ -124,7 +131,7 @@ export async function scheduleTask(id: string, start: string | null, durationMin
  * `projectId` scopes the column to one project's board (undefined = all tasks).
  */
 export async function moveTask(id: string, status: string, index: number, projectId?: string | null) {
-  if (!isTaskStatus(status)) return fail("Unknown column.");
+  if (!isColumnOf("tasks", status, await customKeys("tasks", status))) return fail("Unknown column.");
   const column = await prisma.task.findMany({
     where: { status, id: { not: id }, ...(projectId !== undefined ? { projectId } : {}) },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
@@ -151,13 +158,13 @@ export async function deleteTask(id: string) {
 
 export type ProjectInput = { name?: string; description?: string | null; emoji?: string | null; color?: string; stage?: string; dueDate?: string | null; archived?: boolean };
 
-function projectData(input: ProjectInput) {
+function projectData(input: ProjectInput, custom: string[] = []) {
   const data: Record<string, unknown> = {};
   if (input.name !== undefined) data.name = clean(input.name, 200) || "Untitled project";
   if (input.description !== undefined) data.description = clean(input.description, 2000) || null;
   if (input.emoji !== undefined) data.emoji = clean(input.emoji, 8) || null;
   if (input.color !== undefined && isProjectColor(input.color)) data.color = input.color;
-  if (input.stage !== undefined && isProjectStage(input.stage)) data.stage = input.stage;
+  if (input.stage !== undefined && isColumnOf("projects", input.stage, custom)) data.stage = input.stage;
   if (input.dueDate !== undefined) data.dueDate = isYmd(input.dueDate) ? input.dueDate : null;
   if (input.archived !== undefined) data.archived = Boolean(input.archived);
   return data;
@@ -165,21 +172,22 @@ function projectData(input: ProjectInput) {
 
 export async function createProject(input: ProjectInput): Promise<ActionResult & { id?: string }> {
   if (!clean(input.name)) return fail("Give the project a name.");
-  const stage = isProjectStage(input.stage) ? input.stage : "planned";
+  const custom = await customKeys("projects", input.stage);
+  const stage = isColumnOf("projects", input.stage, custom) ? input.stage : "planned";
   const first = await prisma.project.findFirst({ where: { stage }, orderBy: { position: "asc" } });
-  const p = await prisma.project.create({ data: { name: "", ...projectData({ ...input, stage }), position: (first?.position ?? 1024) - 1024 } as never });
+  const p = await prisma.project.create({ data: { name: "", ...projectData({ ...input, stage }, custom), position: (first?.position ?? 1024) - 1024 } as never });
   return { ...done(), id: p.id };
 }
 
 export async function updateProject(id: string, input: ProjectInput) {
-  const data = projectData(input);
+  const data = projectData(input, await customKeys("projects", input.stage));
   if (data.stage) data.stageOverridden = true;
   await prisma.project.update({ where: { id }, data });
   return done();
 }
 
 export async function moveProject(id: string, stage: string, index: number) {
-  if (!isProjectStage(stage)) return fail("Unknown column.");
+  if (!isColumnOf("projects", stage, await customKeys("projects", stage))) return fail("Unknown column.");
   const column = await prisma.project.findMany({
     where: { stage, archived: false, id: { not: id } },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
@@ -201,6 +209,69 @@ export async function deleteProject(id: string, withTasks = false) {
   await prisma.project.delete({ where: { id } });
   revalidatePath("/", "layout");
   redirect("/projects");
+}
+
+/* --------------------------------------------------------- board columns */
+
+const isBoard = (b: unknown): b is Board => b === "tasks" || b === "projects";
+
+/** Writes a built-in column's row the first time it's changed (custom columns always have one). */
+async function columnRow(board: Board, key: string) {
+  const row = await prisma.boardColumn.findUnique({ where: { board_key: { board, key } } });
+  if (row) return row;
+  const builtIn = mergeColumns(board, []).find((c) => c.key === key);
+  if (!builtIn) return null;
+  return prisma.boardColumn.create({ data: { board, key, label: builtIn.label, color: builtIn.color, position: builtIn.position } });
+}
+
+export async function addColumn(board: Board, label: string, color = "gray"): Promise<ActionResult & { key?: string }> {
+  if (!isBoard(board)) return fail("Unknown board.");
+  const name = clean(label, 40);
+  if (!name) return fail("Give the column a name.");
+  const cols = mergeColumns(board, await prisma.boardColumn.findMany({ where: { board } }));
+  // New columns go just before Done (or at the end).
+  const doneAt = cols.findIndex((c) => c.key === "done");
+  const position = positionAt(cols, doneAt === -1 ? cols.length : doneAt);
+  const key = newColumnKey();
+  await prisma.boardColumn.create({ data: { board, key, label: name, color: isProjectColor(color) ? color : "gray", position } });
+  return { ...done(), key };
+}
+
+export async function updateColumn(board: Board, key: string, input: { label?: string; color?: string; hidden?: boolean }) {
+  if (!isBoard(board)) return fail("Unknown board.");
+  const row = await columnRow(board, key);
+  if (!row) return fail("That column no longer exists.");
+  const data: Record<string, unknown> = {};
+  if (input.label !== undefined) data.label = clean(input.label, 40) || row.label;
+  if (input.color !== undefined) data.color = isProjectColor(input.color) ? input.color : "gray";
+  if (input.hidden !== undefined) {
+    if (key === "done" && input.hidden) return fail("Done can't be hidden.");
+    data.hidden = Boolean(input.hidden);
+  }
+  await prisma.boardColumn.update({ where: { id: row.id }, data });
+  return done(input.hidden ? "Column hidden — show it again from “Hidden columns”" : undefined);
+}
+
+/** Moves a column to `index` among the board's columns. */
+export async function moveColumn(board: Board, key: string, index: number) {
+  if (!isBoard(board)) return fail("Unknown board.");
+  const cols = mergeColumns(board, await prisma.boardColumn.findMany({ where: { board } })).filter((c) => c.key !== key);
+  const row = await columnRow(board, key);
+  if (!row) return fail("That column no longer exists.");
+  await prisma.boardColumn.update({ where: { id: row.id }, data: { position: positionAt(cols, index) } });
+  return done();
+}
+
+/** Deletes a custom column; its cards move to To do / Planned. */
+export async function deleteColumn(board: Board, key: string) {
+  if (!isBoard(board) || !isCustomColumn(key)) return fail("Built-in columns can be hidden, not deleted.");
+  const fallback = board === "tasks" ? "todo" : "planned";
+  const n =
+    board === "tasks"
+      ? (await prisma.task.updateMany({ where: { status: key }, data: { status: fallback } })).count
+      : (await prisma.project.updateMany({ where: { stage: key }, data: { stage: fallback } })).count;
+  await prisma.boardColumn.deleteMany({ where: { board, key } });
+  return done(n ? `Column deleted — ${n} card${n === 1 ? "" : "s"} moved to ${board === "tasks" ? "To do" : "Planned"}` : "Column deleted");
 }
 
 /* ------------------------------------------------------------- calendars */

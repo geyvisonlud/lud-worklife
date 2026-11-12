@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, BookOpen, Heart, KanbanSquare, LogOut, MoreHorizontal, NotebookPen, BookmarkCheck, PlugZap, Repeat, Sun } from "lucide-react";
 import { logout } from "@/app/actions";
+import { projectColor } from "@/lib/colors";
+import { ProjectButton } from "./ProjectSheet";
 
 const ITEMS = [
   { href: "/", label: "Today", icon: Sun, group: "Plan" },
@@ -24,7 +26,9 @@ export type Badges = Partial<Record<string, number>>;
 
 const isActive = (path: string, href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
-export function Sidebar({ badges, authEnabled, sync }: { badges: Badges; authEnabled: boolean; sync: { label: string; ok: boolean }[] }) {
+export type SideProject = { id: string; name: string; emoji: string | null; color: string; open: number };
+
+export function Sidebar({ badges, authEnabled, sync, projects }: { badges: Badges; authEnabled: boolean; sync: { label: string; ok: boolean }[]; projects: SideProject[] }) {
   const path = usePathname();
   return (
     <aside className="glass fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-hairline px-3 pb-3 pt-5 md:flex">
@@ -59,6 +63,7 @@ export function Sidebar({ badges, authEnabled, sync }: { badges: Badges; authEna
                 );
               })}
             </div>
+            {g === "Work" && <SidebarProjects projects={projects} path={path} />}
           </div>
         ))}
       </nav>
@@ -130,5 +135,47 @@ export function TabBar({ badges }: { badges: Badges }) {
         </button>
       </nav>
     </>
+  );
+}
+
+/** "Projects" in the sidebar: projects that aren't done, with their color and open tasks; + makes a new one. */
+function SidebarProjects({ projects, path }: { projects: SideProject[]; path: string }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? projects : projects.slice(0, 7);
+  return (
+    <div className="mt-2.5 border-t border-hairline pt-2.5" role="group" aria-label="Projects">
+      <div className="flex items-center justify-between pb-1 pl-2.5 pr-1">
+        <Link href="/projects" className="text-[12px] font-medium text-ink-3 hover:text-ink">
+          Projects
+        </Link>
+        <ProjectButton compact />
+      </div>
+      <div className="flex flex-col gap-px">
+        {shown.map((p) => {
+          const active = path === `/projects/${p.id}`;
+          const c = projectColor(p.color).hex;
+          return (
+            <Link
+              key={p.id}
+              href={`/projects/${p.id}`}
+              aria-current={active ? "page" : undefined}
+              className={`flex min-w-0 items-center gap-2.5 rounded-[8px] px-2.5 py-[5px] text-[13px] transition-colors ${active ? "bg-surface-3 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}
+            >
+              <span className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[10.5px] leading-none" style={{ background: p.emoji ? `color-mix(in srgb, ${c} 18%, var(--surface))` : c }} aria-hidden>
+                {p.emoji ?? ""}
+              </span>
+              <span className="truncate">{p.name}</span>
+              {p.open > 0 && <span className="num ml-auto text-[11px] text-ink-3">{p.open}</span>}
+            </Link>
+          );
+        })}
+        {projects.length > 7 && (
+          <button className="rounded-[8px] px-2.5 py-[5px] text-left text-[12px] text-ink-3 hover:text-ink" onClick={() => setAll(!all)}>
+            {all ? "Show less" : `${projects.length - 7} more`}
+          </button>
+        )}
+        {!projects.length && <p className="px-2.5 py-1 text-[12px] text-ink-3">No projects going.</p>}
+      </div>
+    </div>
   );
 }

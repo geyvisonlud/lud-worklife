@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { OpenInNotion, TaskBoard } from "@/components/Kanban";
+import { OpenInNotion, TaskBoardView } from "@/components/Kanban";
 import { NotionContent } from "@/components/NotionContent";
 import { ProjectButton, RefreshNotion } from "@/components/ProjectSheet";
 import { NewTaskButton } from "@/components/TaskBits";
@@ -9,8 +9,8 @@ import { Card, NotionMark, ProgressBar, notionReasonLabel } from "@/components/u
 import { projectColor } from "@/lib/colors";
 import { prisma } from "@/lib/db";
 import { formatDay, relativeTime } from "@/lib/dates";
-import { notionContent, projectDTO, taskDTO } from "@/lib/data";
-import { stageLabel } from "@/lib/kanban";
+import { boardColumns, notionContent, projectDTO, taskDTO } from "@/lib/data";
+import { columnLabel } from "@/lib/kanban";
 
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
@@ -40,7 +40,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
             <h1 className="title-serif">{p.name}</h1>
             {p.description && <p className="mt-2 max-w-2xl text-[14.5px] text-ink-2">{p.description}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]">
-              <span className="pill !py-0.5">{stageLabel(p.stage)}</span>
+              <span className="pill !py-0.5">{columnLabel(await boardColumns("projects"), p.stage)}</span>
               {p.dueDate && <span className="pill !py-0.5">Target {formatDay(p.dueDate)}</span>}
               {p.source === "notion" && (
                 <span className="pill !py-0.5">
@@ -87,7 +87,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           <div className="mx-auto max-w-3xl py-2">{blocks.length ? <NotionContent blocks={blocks} /> : <p className="text-ink-2">This page is empty.</p>}</div>
         </Card>
       ) : (
-        <TaskBoard tasks={tasks} projectId={p.id} />
+        <TaskBoardView tasks={tasks} projectId={p.id} />
       )}
     </div>
   );

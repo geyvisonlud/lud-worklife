@@ -98,3 +98,63 @@ export function parseQuickAdd(input: string, today: string) {
   take(/\s(\d{4}-\d{2}-\d{2})\b/, (m) => (dueDate = m[1]));
   return { title: title.replace(/\s+/g, " ").trim(), dueDate, priority, durationMin };
 }
+
+/* ------------------------------------------------------- board toolbar */
+
+export type BoardFilter = {
+  q: string;
+  /** "" = any, or "0".."3". */
+  priority: string;
+  /** "" = all projects, "none" = no project, or a project id. */
+  project: string;
+  due: "" | "overdue" | "today" | "week" | "none";
+  sort: "manual" | "due" | "priority";
+};
+export const EMPTY_FILTER: BoardFilter = { q: "", priority: "", project: "", due: "", sort: "manual" };
+
+type BoardTask = { title: string; notes: string | null; priority: number; projectId: string | null; dueDate: string | null; status: string; position: number };
+
+/** The board toolbar: search, priority, project and due filters, then the sort (manual = the board's own order). */
+export function filterBoardTasks<T extends BoardTask>(tasks: T[], f: BoardFilter, today: string, projectName: (id: string) => string = () => "") {
+  const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const weekEnd = addDays(today, 6);
+  const out = tasks.filter((t) => {
+    if (words.length) {
+      const hay = `${t.title} ${t.notes ?? ""} ${t.projectId ? projectName(t.projectId) : ""}`.toLowerCase();
+      if (!words.every((w) => hay.includes(w))) return false;
+    }
+    if (f.priority && t.priority !== Number(f.priority)) return false;
+    if (f.project === "none" ? t.projectId !== null : f.project && t.projectId !== f.project) return false;
+    if (f.due === "none" && t.dueDate) return false;
+    if (f.due === "overdue" && !(t.dueDate && t.dueDate < today && t.status !== "done")) return false;
+    if (f.due === "today" && t.dueDate !== today) return false;
+    if (f.due === "week" && !(t.dueDate && t.dueDate <= weekEnd && (t.dueDate >= today || t.status !== "done"))) return false;
+    return true;
+  });
+  const sorted = [...out];
+  if (f.sort === "due") sorted.sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || b.priority - a.priority || a.position - b.position);
+  else if (f.sort === "priority") sorted.sort((a, b) => b.priority - a.priority || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.position - b.position);
+  return sorted;
+}
+
+/** Figures for the board header: open, overdue, due this week (next 7 days, today included). */
+export function boardStats(tasks: { status: string; dueDate: string | null }[], today: string) {
+  const open = tasks.filter((t) => t.status !== "done");
+  const weekEnd = addDays(today, 6);
+  return {
+    open: open.length,
+    overdue: open.filter((t) => t.dueDate && t.dueDate < today).length,
+    week: open.filter((t) => t.dueDate && t.dueDate >= today && t.dueDate <= weekEnd).length,
+  };
+}
+
+/** The flag on a card: "Today", "Tomorrow", "Yesterday" or "Nov 20" (with the year when it isn't this year). */
+export function flagDate(day: string, today: string) {
+  const diff = daysBetween(today, day);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  const [y, m, d] = day.split("-").map(Number);
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return `${mon} ${d}${String(y) !== today.slice(0, 4) ? `, ${y}` : ""}`;
+}

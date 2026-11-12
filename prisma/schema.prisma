@@ -390,3 +390,19 @@ model NotificationLog {
 
   @@index([sentAt])
 }
+
+/// Kanban columns for the Tasks and Projects boards. The built-in columns (backlog/todo/doing/done,
+/// planned/active/hold/done) only get a row once renamed, recolored, hidden or moved; custom columns have keys "c_…".
+model BoardColumn {
+  id        String   @id @default(cuid())
+  board     String // tasks | projects
+  key       String
+  label     String
+  /// Palette key from lib/colors.ts (PROJECT_COLORS) or "gray".
+  color     String   @default("gray")
+  position  Float    @default(0)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([board, key])
+}

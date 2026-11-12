@@ -13,7 +13,7 @@ export default async function ProjectsPage() {
   const dueSoon = projects.filter((p) => p.stage !== "done" && p.dueDate && daysBetween(day, p.dueDate) >= 0 && daysBetween(day, p.dueDate) <= 30);
   return (
     <div>
-      <PageHeader eyebrow="Drag cards between columns" title="Projects">
+      <PageHeader eyebrow="Board · drag cards between columns" title="Projects">
         <ProjectButton />
       </PageHeader>
       <StatStrip
