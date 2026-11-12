@@ -68,6 +68,12 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   Notes without a folder are the **Inbox** (`?folder=none`). Two collection views, remembered in localStorage `lw:notes-view`: list/table and boxes (masonry cards). `Note.color` is a PROJECT_COLORS key
   (tinted card/editor via `noteTint`). "Make it a project" (`noteToProject`, sets `Note.projectId`) and "Add to calendar…"
   (`noteToEvent`: any writable calendar; Google calendars get the event in Google too; `noteEvent` in lib/notes.ts builds it).
+- Calendar layout is Fantastical-like: views Day / Week / Month / Year (`?view=`, 3day still works by URL), red active tab and today.
+  Desktop sidebar = `MiniMonth` (busy dots, browsable) + event search + `AgendaList` (TODAY / TOMORROW / weekday headers, all-day
+  pills, Join for meet links, task time blocks), then collapsible Unscheduled and Calendars. Month = `MonthGrid` (all-day bars,
+  dot + title + time rows, "N more…" → day view, double-click = new event); Year = `YearGrid`. Phones open on Month = big mini month +
+  agenda from the tapped day; Day view on phones has a week strip. Components in `CalendarPanels.tsx`, math in `lib/calendar-month.ts`
+  (tested). The page loads this month ± 1 plus 3 weeks ahead (the whole year in Year).
 - Calendar: drag with the mouse on an empty part of a day to select start → end (`dragRange`, 15-min snap; a plain click = 1 h
   at the half hour; a tap on phones does the same, touch-drag scrolls). It opens `NewItemSheet` — **Event by default** (writable
   calendar, last used remembered in localStorage `lw:last-calendar`; `createEvent` → Google for Google calendars + a local Event row

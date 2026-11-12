@@ -8,7 +8,7 @@ import { createEvent, createTask, deleteEvent, updateEvent, scheduleTask, setCal
 import { dragRange, hm } from "@/lib/events";
 import { layoutDay, clipToDay } from "@/lib/calendar-layout";
 import { projectColor } from "@/lib/colors";
-import { addDays, dayShort, wallMinutes, formatClock, formatClockRange, formatDay, formatRange, minutesInTz, snapMinutes, ymdInTz, zonedToUtc } from "@/lib/dates";
+import { addDays, dayShort, startOfWeek, wallMinutes, formatClock, formatClockRange, formatDay, formatRange, minutesInTz, snapMinutes, ymdInTz, zonedToUtc } from "@/lib/dates";
 import type { CalendarDTO, EventDTO, TaskDTO } from "@/lib/data";
 import { compareTasks } from "@/lib/tasks";
 import { dragState } from "./dragState";
@@ -16,11 +16,13 @@ import { Field, Sheet } from "./Sheet";
 import { QuickAdd, TaskCheck, TaskRow } from "./TaskBits";
 import { useReport, useWork } from "./TaskSheet";
 import { GoogleMark } from "./ui";
+import { AgendaList, AgendaSearch, MiniMonth, MonthGrid, ViewSwitch, YearGrid, textOn, useStoredFlag } from "./CalendarPanels";
+import { addMonths, busyDays, firstOfMonth, monthTitle, monthWeeks } from "@/lib/calendar-month";
 
 const HOUR = 48; // px per hour
 const PX_PER_MIN = HOUR / 60;
 
-export type CalView = "day" | "3day" | "week";
+export type CalView = "day" | "3day" | "week" | "month" | "year";
 
 type Block =
   | { kind: "event"; id: string; start: number; end: number; event: EventDTO }
@@ -35,10 +37,12 @@ export function CalendarView({
   calendars,
   hasAccounts,
   explicitView,
+  weekStart,
 }: {
   days: string[];
   view: CalView;
   anchor: string;
+  weekStart: number;
   events: EventDTO[];
   tasks: TaskDTO[];
   calendars: CalendarDTO[];
@@ -56,7 +60,8 @@ export function CalendarView({
   const [syncing, startSync] = useTransition();
   const [, start] = useTransition();
   const [now, setNow] = useState(() => new Date());
-  const [showTray, setShowTray] = useState(false);
+  const [showTray, setShowTray] = useStoredFlag("lw:cal-tray", false);
+  const [showCals, setShowCals] = useStoredFlag("lw:cal-list", false);
   /** Live selection while dragging on an empty part of a day, and the "new event / task" sheet it opens. */
   const [draft, setDraft] = useState<{ day: string; start: number; end: number } | null>(null);
   const [create, setCreate] = useState<NewItem | null>(null);
@@ -65,9 +70,9 @@ export function CalendarView({
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => setLocal(tasks), [tasks]);
 
-  // Phones open on the day view unless a view was picked.
+  // Phones open on the month (mini calendar + agenda, like Fantastical) unless a view was picked.
   useEffect(() => {
-    if (!explicitView && window.innerWidth < 768 && view === "week") router.replace(`/calendar?view=day&date=${anchor}`);
+    if (!explicitView && window.innerWidth < 1024 && view === "week") router.replace(`/calendar?view=month&date=${anchor}`);
   }, [explicitView, view, anchor, router]);
 
   useEffect(() => {
@@ -79,7 +84,7 @@ export function CalendarView({
   // Start scrolled to the morning (or an hour before now).
   useEffect(() => {
     const el = scroller.current;
-    if (!el) return;
+    if (!el || !days.length) return;
     const m = days.includes(today) ? minutesInTz(new Date(), tz) - 90 : 7 * 60 + 30;
     el.scrollTop = Math.max(0, m * PX_PER_MIN);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,120 +214,253 @@ export function CalendarView({
   /* -------------------------------------------------------------- render */
   const step = view === "week" ? 7 : view === "3day" ? 3 : 1;
   const href = (date: string, v: CalView = view) => `/calendar?view=${v}&date=${date}`;
+  const prevDate = view === "month" ? addMonths(anchor, -1) : view === "year" ? `${Number(anchor.slice(0, 4)) - 1}-01-01` : addDays(anchor, -step);
+  const nextDate = view === "month" ? addMonths(anchor, 1) : view === "year" ? `${Number(anchor.slice(0, 4)) + 1}-01-01` : addDays(anchor, step);
   const nowMin = minutesInTz(now, tz);
   const accounts = [...new Set(calendars.map((c) => c.accountEmail))];
+  const timeView = view === "day" || view === "3day" || view === "week";
+
+  // Sidebar: mini month (browsable on its own) and the agenda from the selected day.
+  const [sel, setSel] = useState(() => (view === "month" || view === "year" ? (anchor.slice(0, 7) === today.slice(0, 7) ? today : anchor) : days.includes(today) ? today : (days[0] ?? anchor)));
+  const [miniMonth, setMiniMonth] = useState(() => firstOfMonth(sel));
+  const [query, setQuery] = useState("");
+  const busy = useMemo(() => {
+    const ds = [-1, 0, 1].flatMap((k) => monthWeeks(addMonths(miniMonth, k), weekStart, true).flat());
+    return busyDays(events, [...new Set(ds)], tz);
+  }, [events, miniMonth, weekStart, tz]);
+  const agendaTasks = useMemo(
+    () =>
+      local
+        .filter((t) => t.scheduledStart)
+        .map((t) => {
+          const d = ymdInTz(new Date(t.scheduledStart!), tz);
+          const s = wallMinutes(new Date(t.scheduledStart!), d, tz);
+          return { task: t, day: d, start: s, end: s + t.durationMin };
+        })
+        .sort((a, b) => a.start - b.start),
+    [local, tz],
+  );
+  const pick = (day: string, navigate: boolean) => {
+    setSel(day);
+    setQuery("");
+    if (day.slice(0, 7) !== miniMonth.slice(0, 7)) setMiniMonth(firstOfMonth(day));
+    if (navigate) router.push(href(day, view === "year" ? "day" : view));
+  };
+  const newAt = (d: string) => {
+    const s = d === today ? Math.min(23 * 60, Math.ceil(minutesInTz(new Date(), tz) / 30) * 30) : 9 * 60;
+    setCreate({ day: d, start: s, end: Math.min(1440, s + 60), allDay: false });
+  };
+  const agendaList = (
+    <AgendaList
+      events={events}
+      tasks={agendaTasks}
+      projects={projects}
+      from={sel}
+      today={today}
+      tz={tz}
+      query={query}
+      onOpen={setOpenEvent}
+      onOpenTask={openTask}
+    />
+  );
+  const title =
+    view === "day"
+      ? formatDay(days[0], { long: true, year: true })
+      : view === "year"
+        ? anchor.slice(0, 4)
+        : view === "month"
+          ? monthTitle(anchor)
+          : days[0].slice(0, 7) === days[days.length - 1].slice(0, 7)
+            ? monthTitle(days[0])
+            : formatRange(days[0], days[days.length - 1]);
+
+  const unscheduled = (
+    <section
+      className={`card animate-in !p-0 transition-colors ${trayOver ? "!border-accent !bg-accent-soft" : ""}`}
+      onDragOver={(e) => {
+        const d = dragState.task;
+        if (!d || !local.find((t) => t.id === d.id)?.scheduledStart) return;
+        e.preventDefault();
+        setTrayOver(true);
+      }}
+      onDragLeave={() => setTrayOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setTrayOver(false);
+        const d = dragState.task;
+        dragState.task = null;
+        if (d) commit(d.id, null);
+      }}
+    >
+      <button className="flex w-full items-center gap-2 px-4 py-3 text-left" onClick={() => setShowTray(!showTray)} aria-expanded={showTray}>
+        <Inbox size={14} className="text-ink-3" />
+        <h2 className="label-mono">Unscheduled</h2>
+        <span className="num ml-auto text-[12px] text-ink-3">{tray.length}</span>
+        <ChevronRight size={14} className={`text-ink-3 transition-transform ${showTray ? "rotate-90" : ""}`} />
+      </button>
+      {showTray && (
+        <div className="border-t border-hairline px-4 pb-3 pt-2">
+          <p className="mb-1 text-[12px] text-ink-3">Drag a task onto the day or week grid to block time for it. Drag it back here to unschedule.</p>
+          <div className="max-h-[42vh] overflow-y-auto">
+            {tray.map((t) => (
+              <TaskRow key={t.id} task={t} draggable compact={false} />
+            ))}
+            {!tray.length && <p className="py-4 text-center text-[13px] text-ink-3">Everything is scheduled 🎉</p>}
+          </div>
+          <div className="mt-2">
+            <QuickAdd placeholder="New task…" />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+  const calendarList = (
+    <section className="card animate-in !p-0">
+      <button className="flex w-full items-center gap-2 px-4 py-3 text-left" onClick={() => setShowCals(!showCals)} aria-expanded={showCals}>
+        <h2 className="label-mono">Calendars</h2>
+        <span className="num ml-auto text-[12px] text-ink-3">{calendars.filter((c) => c.visible).length}/{calendars.length}</span>
+        <ChevronRight size={14} className={`text-ink-3 transition-transform ${showCals ? "rotate-90" : ""}`} />
+      </button>
+      {showCals && (
+        <div className="space-y-3 border-t border-hairline px-4 py-3">
+          {!hasAccounts && (
+            <a href="/api/google/connect" className="btn btn-secondary w-full justify-center">
+              <GoogleMark /> Connect Google Calendar
+            </a>
+          )}
+          {accounts.map((email) => (
+            <div key={email}>
+              <div className="mb-1 truncate text-[11.5px] text-ink-3">{email}</div>
+              {calendars
+                .filter((c) => c.accountEmail === email)
+                .map((c) => (
+                  <CalendarToggle key={c.id} cal={c} />
+                ))}
+            </div>
+          ))}
+          <Link href="/connections" className="block text-[12px] text-accent">
+            Manage connections
+          </Link>
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      {/* ---------- side panel */}
-      <aside className="order-2 flex flex-col gap-4 lg:order-1 lg:w-[248px] lg:shrink-0">
-        <section
-          className={`card animate-in !p-0 transition-colors ${trayOver ? "!border-accent !bg-accent-soft" : ""}`}
-          onDragOver={(e) => {
-            const d = dragState.task;
-            if (!d || !local.find((t) => t.id === d.id)?.scheduledStart) return;
-            e.preventDefault();
-            setTrayOver(true);
-          }}
-          onDragLeave={() => setTrayOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setTrayOver(false);
-            const d = dragState.task;
-            dragState.task = null;
-            if (d) commit(d.id, null);
-          }}
-        >
-          <button className="flex w-full items-center gap-2 border-b border-hairline px-4 py-3 text-left lg:pointer-events-none" onClick={() => setShowTray((v) => !v)}>
-            <Inbox size={14} className="text-ink-3" />
-            <h2 className="label-mono">Unscheduled</h2>
-            <span className="num ml-auto text-[12px] text-ink-3">{tray.length}</span>
-          </button>
-          <div className={`${showTray ? "block" : "hidden"} px-4 pb-3 pt-2 lg:block`}>
-            <p className="mb-1 text-[12px] text-ink-3">Drag a task onto the calendar to block time for it. Drag it back here to unschedule.</p>
-            <div className="max-h-[42vh] overflow-y-auto">
-              {tray.map((t) => (
-                <TaskRow key={t.id} task={t} draggable compact={false} />
-              ))}
-              {!tray.length && <p className="py-4 text-center text-[13px] text-ink-3">Everything is scheduled 🎉</p>}
-            </div>
-            <div className="mt-2">
-              <QuickAdd placeholder="New task…" />
-            </div>
+      {/* ---------- sidebar (desktop): mini month, search, agenda; then tasks and calendars */}
+      <aside className="order-2 flex flex-col gap-4 lg:order-1 lg:w-[284px] lg:shrink-0">
+        <section className="card animate-in sticky top-6 hidden !p-0 [--agenda-bg:var(--surface)] lg:flex lg:max-h-[calc(100vh-180px)] lg:flex-col">
+          <div className="px-3 pb-2 pt-3">
+            <MiniMonth month={miniMonth} onMonth={setMiniMonth} selected={sel} range={timeView ? days : undefined} today={today} weekStart={weekStart} busy={busy} onPick={(d) => pick(d, true)} />
           </div>
+          <div className="border-t border-hairline px-3 py-2">
+            <AgendaSearch value={query} onChange={setQuery} />
+          </div>
+          <div className="min-h-[160px] flex-1 overflow-y-auto px-1.5 pb-3">{agendaList}</div>
         </section>
-
-        <section className="card animate-in !p-0">
-          <div className="flex items-center gap-2 border-b border-hairline px-4 py-3">
-            <h2 className="label-mono">Calendars</h2>
-            <Link href="/connections" className="ml-auto text-[12px] text-accent">
-              Manage
-            </Link>
-          </div>
-          <div className="space-y-3 px-4 py-3">
-            {!hasAccounts && (
-              <a href="/api/google/connect" className="btn btn-secondary w-full justify-center">
-                <GoogleMark /> Connect Google Calendar
-              </a>
-            )}
-            {accounts.map((email) => (
-              <div key={email}>
-                <div className="mb-1 truncate text-[11.5px] text-ink-3">{email}</div>
-                {calendars
-                  .filter((c) => c.accountEmail === email)
-                  .map((c) => (
-                    <CalendarToggle key={c.id} cal={c} />
-                  ))}
-              </div>
-            ))}
-          </div>
-        </section>
+        {unscheduled}
+        {calendarList}
       </aside>
 
-      {/* ---------- grid */}
+      {/* ---------- main */}
       <section className="card animate-in order-1 min-w-0 flex-1 !p-0 lg:order-2">
         <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-3 py-2.5 sm:px-4">
+          <h2 className="mr-auto min-w-0 truncate text-[20px] font-semibold tracking-[-0.02em] sm:text-[22px]">
+            {view === "month" || (timeView && view !== "day" && days[0].slice(0, 7) === days[days.length - 1].slice(0, 7)) ? (
+              <>
+                {title.split(" ")[0]} <span className="font-normal text-bad">{title.split(" ")[1]}</span>
+              </>
+            ) : (
+              title
+            )}
+          </h2>
           <div className="flex items-center gap-1">
-            <Link href={href(addDays(anchor, -step))} className="icon-btn !h-8 !w-8" aria-label="Previous">
+            <Link href={href(prevDate)} className="icon-btn !h-8 !w-8" aria-label="Previous">
               <ChevronLeft size={16} />
             </Link>
-            <Link href={href(today)} className="pill !py-1">
+            <Link href={href(today)} className="pill !py-1" onClick={() => pick(today, false)}>
               Today
             </Link>
-            <Link href={href(addDays(anchor, step))} className="icon-btn !h-8 !w-8" aria-label="Next">
+            <Link href={href(nextDate)} className="icon-btn !h-8 !w-8" aria-label="Next">
               <ChevronRight size={16} />
             </Link>
           </div>
-          <h2 className="text-[15px] font-medium tracking-[-0.01em]">{view === "day" ? formatDay(days[0], { long: true, year: true }) : formatRange(days[0], days[days.length - 1])}</h2>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              className="btn btn-primary !px-2.5 !py-1.5 !text-[13px]"
-              onClick={() => {
-                const d = days.includes(today) ? today : days[0];
-                const s = d === today ? Math.min(23 * 60, Math.ceil(minutesInTz(new Date(), tz) / 30) * 30) : 9 * 60;
-                setCreate({ day: d, start: s, end: Math.min(1440, s + 60), allDay: false });
-              }}
-            >
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <ViewSwitch
+              value={view === "3day" ? "week" : view}
+              options={[
+                ["day", "Day"],
+                ["week", "Week"],
+                ["month", "Month"],
+                ["year", "Year"],
+              ]}
+              onChange={(v) => router.push(href(sel, v))}
+            />
+            <button className="btn btn-primary ml-auto !px-2.5 !py-1.5 !text-[13px]" onClick={() => newAt(timeView ? (days.includes(today) ? today : days[0]) : sel)}>
               <Plus size={14} /> New
             </button>
-            <div className="seg-sm" role="group" aria-label="View">
-              {(["day", "3day", "week"] as const).map((v) => (
-                <button key={v} aria-pressed={view === v} onClick={() => router.push(href(anchor, v))}>
-                  {v === "day" ? "Day" : v === "3day" ? "3 days" : "Week"}
-                </button>
-              ))}
-            </div>
-            <button
-              className="icon-btn !h-8 !w-8"
-              aria-label="Sync calendars"
-              disabled={syncing}
-              onClick={() => startSync(async () => void report(await syncCalendarsNow()))}
-            >
+            <button className="icon-btn !h-8 !w-8" aria-label="Sync calendars" disabled={syncing} onClick={() => startSync(async () => void report(await syncCalendarsNow()))}>
               <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
 
+        {view === "month" && (
+          <>
+            {/* phones: big mini month + the agenda from the picked day (Fantastical on iPhone) */}
+            <div className="lg:hidden">
+              <div className="px-2 pb-2 pt-3">
+                <MiniMonth month={miniMonth} onMonth={setMiniMonth} selected={sel} today={today} weekStart={weekStart} busy={busy} onPick={(d) => pick(d, false)} size="lg" bare />
+              </div>
+              <div className="border-t border-hairline px-3 py-2">
+                <AgendaSearch value={query} onChange={setQuery} />
+              </div>
+              <div className="px-1.5 pb-3">{agendaList}</div>
+            </div>
+            <div className="hidden lg:block">
+              <MonthGrid
+                anchor={anchor}
+                weekStart={weekStart}
+                today={today}
+                tz={tz}
+                events={events}
+                tasks={local}
+                colorOf={colorOf}
+                onOpen={setOpenEvent}
+                onOpenTask={openTask}
+                onDay={(d) => router.push(href(d, "day"))}
+                onCreate={newAt}
+              />
+            </div>
+          </>
+        )}
+        {view === "year" && <YearGrid anchor={anchor} weekStart={weekStart} today={today} tz={tz} events={events} onDay={(d) => router.push(href(d, "day"))} onMonth={(m) => router.push(href(m, "month"))} />}
+
+        {view === "day" && (
+          // phones: the week as a strip (Fantastical's day ticker), with busy dots
+          <div className="grid grid-cols-7 border-b border-hairline px-1 py-1.5 lg:hidden">
+            {Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor, weekStart), i)).map((d) => (
+              <Link key={d} href={href(d)} className="flex flex-col items-center gap-0.5 py-0.5" aria-current={d === anchor ? "date" : undefined}>
+                <span className={`text-[10.5px] font-medium uppercase ${d === today ? "text-bad" : "text-ink-3"}`}>{dayShort(d).slice(0, 1)}</span>
+                <span
+                  className={`num inline-flex h-8 w-8 items-center justify-center rounded-full text-[15px] ${
+                    d === anchor ? (d === today ? "bg-bad font-semibold text-white" : "bg-ink font-semibold text-surface") : d === today ? "font-semibold text-bad" : ""
+                  }`}
+                >
+                  {Number(d.slice(8))}
+                </span>
+                <span className="flex h-[3px] gap-[2px]" aria-hidden>
+                  {Array.from({ length: Math.min(3, busy.get(d) ?? 0) }, (_, k) => (
+                    <span key={k} className="h-[3px] w-[3px] rounded-full bg-ink-3" />
+                  ))}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {timeView && (
         <div className="overflow-x-auto">
           <div style={{ minWidth: view === "week" ? 640 : undefined }}>
             {/* day headers + all-day row */}
@@ -341,8 +479,8 @@ export function CalendarView({
                     title="Double-click for an all-day event"
                   >
                     <div className="mb-1 flex items-baseline justify-center gap-1.5">
-                      <span className={`label-mono !text-[10px] ${isToday ? "!text-accent" : ""}`}>{dayShort(day)}</span>
-                      <span className={`num inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-[16px] font-medium ${isToday ? "bg-accent text-white" : ""}`}>
+                      <span className={`label-mono !text-[10px] ${isToday ? "!text-bad" : ""}`}>{dayShort(day)}</span>
+                      <span className={`num inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-[16px] font-medium ${isToday ? "bg-bad text-white" : ""}`}>
                         {Number(day.slice(8))}
                       </span>
                     </div>
@@ -518,6 +656,7 @@ export function CalendarView({
             </div>
           </div>
         </div>
+        )}
       </section>
 
       <EventSheet
@@ -544,11 +683,6 @@ export function CalendarView({
   );
 }
 
-const textOn = (hex: string) => {
-  const h = hex.replace("#", "");
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-  return r * 0.299 + g * 0.587 + b * 0.114 > 165 ? "#151513" : "#fff";
-};
 
 function tzAbbr(tz: string) {
   try {
