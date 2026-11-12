@@ -60,3 +60,18 @@ describe("tables in plain text", () => {
     expect(plainText("| Area | Owner |\n|---|:--:|\n| Data | Lud |")).toBe("Area · Owner\nData · Lud");
   });
 });
+
+import { continueList } from "./notes";
+
+describe("list continuation", () => {
+  it("continues checklists, bullets and numbers", () => {
+    const t = "Groceries\n- [x] milk";
+    expect(continueList(t, t.length, t.length)).toEqual({ text: t + "\n- [ ] ", cursor: t.length + 7 });
+    expect(continueList("- eggs", 6, 6)).toEqual({ text: "- eggs\n- ", cursor: 9 });
+    expect(continueList("  3. step", 9, 9)).toEqual({ text: "  3. step\n  4. ", cursor: 15 });
+  });
+  it("ends the list on an empty item, and ignores plain lines", () => {
+    expect(continueList("- a\n- [ ] ", 10, 10)).toEqual({ text: "- a\n", cursor: 4 });
+    expect(continueList("plain text", 10, 10)).toBeNull();
+  });
+});

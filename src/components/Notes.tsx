@@ -41,7 +41,7 @@ import {
 import { createFolder, createNote, deleteFolder, deleteNote, findNotes, noteToEvent, noteToProject, renameFolder, updateNote } from "@/app/actions";
 import { PROJECT_COLORS } from "@/lib/colors";
 import { formatDay, relativeTime } from "@/lib/dates";
-import { excerpt, mailtoHref, normalizeTags, noteTitle } from "@/lib/notes";
+import { continueList, excerpt, mailtoHref, normalizeTags, noteTitle } from "@/lib/notes";
 import type { FolderDTO, NoteDTO } from "@/lib/notes-data";
 import { Field, Sheet } from "./Sheet";
 import { useReport, useWork } from "./TaskSheet";
@@ -584,6 +584,16 @@ function NoteEditor({
             ref={area}
             value={body}
             onChange={(e) => change({ body: e.target.value })}
+            onKeyDown={(e) => {
+              // Enter in a list keeps the list going (a new "- [ ] " item); Enter on an empty item ends it.
+              if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+              const el = e.currentTarget;
+              const r = continueList(el.value, el.selectionStart, el.selectionEnd);
+              if (!r) return;
+              e.preventDefault();
+              change({ body: r.text });
+              requestAnimationFrame(() => el.setSelectionRange(r.cursor, r.cursor));
+            }}
             onBlur={flush}
             placeholder={"Write in Markdown — # heading, **bold**, - [ ] checklist…"}
             aria-label="Note text (Markdown)"

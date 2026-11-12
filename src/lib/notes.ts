@@ -118,3 +118,24 @@ export function noteEvent(
     google: { summary: title, description, start: { dateTime: start.toISOString(), timeZone: when.tz }, end: { dateTime: end.toISOString(), timeZone: when.tz } },
   };
 }
+
+/**
+ * Enter inside a Markdown list: continue it on the next line ("- ", "- [ ] ", "3. " → "4. "). Enter on an
+ * empty item ends the list (the marker is removed). Returns the new text and cursor, or null to let Enter be.
+ */
+export function continueList(text: string, selStart: number, selEnd: number) {
+  if (selStart !== selEnd) return null;
+  const lineStart = text.lastIndexOf("\n", selStart - 1) + 1;
+  const line = text.slice(lineStart, selStart);
+  const m = /^(\s*)([-*+]|(\d+)[.)])\s(\[[ xX]\]\s)?/.exec(line);
+  if (!m) return null;
+  const [marker, indent, bullet, num, box] = m;
+  if (line.trim() === marker.trim()) {
+    // empty item → end the list
+    const next = text.slice(0, lineStart) + text.slice(selStart);
+    return { text: next, cursor: lineStart };
+  }
+  const nextBullet = num ? `${Number(num) + 1}${bullet.slice(-1)}` : bullet;
+  const insert = `\n${indent}${nextBullet} ${box ? "[ ] " : ""}`;
+  return { text: text.slice(0, selStart) + insert + text.slice(selEnd), cursor: selStart + insert.length };
+}

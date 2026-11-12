@@ -137,9 +137,13 @@ export function QuickAdd({ projectId, status, placeholder = "Add a task…", due
     e.preventDefault();
     const q = parseQuickAdd(value, today);
     if (!q.title) return;
+    // Clear right away and keep the cursor here, so Enter goes straight on to the next task (list building).
+    const typed = value;
+    setValue("");
+    area.current?.focus();
     start(async () => {
       const r = await createTask({ title: q.title, projectId: projectId ?? null, status, priority: q.priority, dueDate: q.dueDate ?? (dueToday ? today : null), ...(q.durationMin ? { durationMin: q.durationMin } : {}) });
-      if (report(r)) setValue("");
+      if (!report(r)) setValue((v) => v || typed);
     });
   };
   const area = useRef<HTMLTextAreaElement>(null);
@@ -173,10 +177,12 @@ export function QuickAdd({ projectId, status, placeholder = "Add a task…", due
           aria-label="New task"
           className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-1 text-[14.5px] leading-[1.4] outline-none placeholder:text-ink-3"
           style={{ boxShadow: "none" }}
-          disabled={pending}
+          enterKeyHint="next"
         />
       </div>
-      {value && <div className="pb-0.5 pl-6 text-[11px] text-ink-3">Enter to add · today · tomorrow · !high · 45m</div>}
+      {(value || pending) && (
+        <div className="pb-0.5 pl-6 text-[11px] text-ink-3">{pending && !value ? "Adding…" : "Enter to add and start the next one · today · tomorrow · !high · 45m"}</div>
+      )}
     </form>
   );
 }
