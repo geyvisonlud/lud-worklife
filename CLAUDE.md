@@ -88,6 +88,12 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   linkedom) extracts the article and `sanitizeArticle` rebuilds it with allow-listed tags only before it's stored in
   `ReadItem.content` and rendered as HTML (`.reader` styles). "Save to notes" (`saveReadItemToNotes`) makes an Inbox note tagged
   #read-later with the link and the article as Markdown (turndown).
+- Notifications (Web Push — iPhone Home Screen app on iOS 16.4+, desktop browsers): `public/sw.js` (shows pushes, opens the
+  url on tap; registered on every page by `RegisterServiceWorker`), `PushSubscription` per device, VAPID keys generated once and
+  kept in Settings (private key encrypted). `NotificationsCard` on Connections turns it on per device + preferences (Setting
+  `notifyPrefs`: events, task time blocks, lead minutes, morning digest + time). `GET /api/cron/notify` (CRON_SECRET) runs
+  `runReminders` → `dueReminders` (pure, `lib/notify.ts`, tested); `NotificationLog` keys make each reminder send once. Called
+  every 5 min by `.github/workflows/notify.yml` (repo secrets APP_URL + CRON_SECRET).
 - Phone tab bar: Today, Tasks, Calendar, Notes, More (Projects, Read Later, Habits, Bible, Saved, Connections).
 - Habits: `lib/habits.ts` (pure, tested) — daily goals count streaks in days, weekly goals (N×/week) in weeks that met the
   goal; an unfinished today/this week never breaks a streak. A check is one `HabitCheck` row per habit per day (YYYY-MM-DD).

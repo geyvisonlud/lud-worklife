@@ -11,6 +11,8 @@ import { notionOAuthConfigured } from "@/lib/notion";
 import { getSettings } from "@/lib/settings";
 import { hasGmailScope } from "@/lib/email";
 import { aiConfigured } from "@/lib/email-ai";
+import { NotificationsCard } from "@/components/NotificationsCard";
+import { notifyPrefs } from "@/lib/notify-data";
 import { hasTasksScope } from "@/lib/google-tasks";
 
 const MESSAGES: Record<string, string> = {
@@ -27,11 +29,13 @@ const MESSAGES: Record<string, string> = {
 
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ error?: string; connected?: string }> }) {
   const sp = await searchParams;
-  const [accounts, notion, settings, syncs] = await Promise.all([
+  const [accounts, notion, settings, syncs, pushDevices, prefs] = await Promise.all([
     prisma.calendarAccount.findMany({ include: { calendars: { orderBy: [{ primary: "desc" }, { name: "asc" }] }, taskLists: { orderBy: { title: "asc" } } }, orderBy: { createdAt: "asc" } }),
     prisma.notionConnection.findMany({ orderBy: { createdAt: "asc" } }),
     getSettings(),
     lastSyncs(),
+    prisma.pushSubscription.findMany({ orderBy: { createdAt: "asc" } }),
+    notifyPrefs(),
   ]);
   const writable = accounts.flatMap((a) => a.calendars.filter((c) => c.canWrite && a.provider === "google").map((c) => ({ id: c.id, label: `${c.name} (${a.email})` })));
   const demoWritable = accounts.flatMap((a) => a.calendars.filter((c) => c.canWrite && a.provider !== "google").map((c) => ({ id: c.id, label: `${c.name} (${a.email}, demo)` })));
@@ -39,9 +43,11 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <PageHeader eyebrow="Calendars · Tasks · Notion · Scheduling" title="Connections" />
+      <PageHeader eyebrow="Notifications · Calendars · Tasks · Notion" title="Connections" />
       {sp.error && <p className="card animate-in !py-3 text-[14px] text-bad">{MESSAGES[sp.error] ?? "Something went wrong."}</p>}
       {sp.connected && <p className="card animate-in !py-3 text-[14px] text-good">Connected {sp.connected}.</p>}
+
+      <NotificationsCard devices={pushDevices.map((d) => ({ id: d.id, label: d.label, endpoint: d.endpoint, createdAt: d.createdAt.toISOString() }))} prefs={prefs} />
 
       <Card title="Google" action={accounts.some((a) => a.provider === "google") ? <SyncButton kind="google" /> : null}>
         <p className="mb-4 text-[13.5px] text-ink-2">

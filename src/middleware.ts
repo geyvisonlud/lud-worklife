@@ -14,5 +14,5 @@ export async function middleware(req: NextRequest) {
 export const config = {
   // /api/cron is protected by CRON_SECRET and /api/capture by its capture token; /login, the sign-in routes (/api/auth) and the app icons/manifest must be public
   // (iOS fetches the Home Screen icon without the session cookie).
-  matcher: ["/((?!login|api/auth|api/cron|api/capture|_next/static|_next/image|favicon.ico|icon.svg|icon-192.png|icon-512.png|apple-touch-icon.png|manifest.webmanifest|splash/).*)"],
+  matcher: ["/((?!login|api/auth|api/cron|api/capture|_next/static|_next/image|favicon.ico|icon.svg|icon-192.png|icon-512.png|apple-touch-icon.png|manifest.webmanifest|sw.js|splash/).*)"],
 };

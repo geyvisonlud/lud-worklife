@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { Splash } from "@/components/Splash";
+import { RegisterServiceWorker } from "@/components/NotificationsCard";
 import { Sidebar, TabBar } from "@/components/Nav";
 import { WorkProvider } from "@/components/TaskSheet";
 import { Main } from "@/components/Main";
@@ -48,6 +49,7 @@ async function AppShell({ children }: { children: React.ReactNode }) {
       <TabBar badges={{ "/tasks": overdue }} />
       <Main>{children}</Main>
       <HabitDock habits={habits} />
+      <RegisterServiceWorker />
     </WorkProvider>
   );
 }

@@ -24,6 +24,8 @@ import { buildEvent } from "@/lib/events";
 import { extractLinks } from "@/lib/read-later";
 import { importLinks, newCaptureToken, readerView, saveToReadLater, type ReaderView } from "@/lib/read-later-data";
 import { articleToMarkdown } from "@/lib/reader";
+import { pushToAll, saveNotifyPrefs, vapidKeys } from "@/lib/notify-data";
+import { parsePrefs, type NotifyPrefs } from "@/lib/notify";
 import { listNotes, type NoteDTO } from "@/lib/notes-data";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -732,4 +734,36 @@ export async function saveReadItemToNotes(id: string): Promise<ActionResult & { 
     data: { title: v.title.slice(0, 200), body: parts.join("\n\n").slice(0, 100_000), tags: ["read-later", ...(item && item.source !== "web" && item.source !== "text" ? [item.source] : [])] },
   });
   return { ...done("Saved to Notes"), noteId: note.id };
+}
+
+/* --------------------------------------------------------- notifications */
+
+export async function pushPublicKey(): Promise<string> {
+  return (await vapidKeys()).publicKey;
+}
+
+/** Remember this device for notifications (the browser's push subscription). */
+export async function savePushSubscription(sub: { endpoint: string; keys?: { p256dh?: string; auth?: string } }, label: string): Promise<ActionResult> {
+  if (!sub?.endpoint?.startsWith("https://") || !sub.keys?.p256dh || !sub.keys?.auth) return fail("This browser didn't give a valid subscription.");
+  await prisma.pushSubscription.upsert({
+    where: { endpoint: sub.endpoint },
+    create: { endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, label: clean(label, 60) || null },
+    update: { p256dh: sub.keys.p256dh, auth: sub.keys.auth, label: clean(label, 60) || null },
+  });
+  return done("Notifications are on for this device");
+}
+
+export async function removePushSubscription(endpointOrId: string): Promise<ActionResult> {
+  await prisma.pushSubscription.deleteMany({ where: { OR: [{ endpoint: endpointOrId }, { id: endpointOrId }] } });
+  return done("Notifications off for that device");
+}
+
+export async function sendTestNotification(): Promise<ActionResult> {
+  const n = await pushToAll({ title: "Lud Worklife", body: "Notifications work ✓ — you'll get reminders here.", url: "/", tag: "test" });
+  return n ? done(`Sent to ${n} device${n === 1 ? "" : "s"}`) : fail("No device is set up yet — turn notifications on first.");
+}
+
+export async function setNotifyPrefs(p: Partial<NotifyPrefs>): Promise<ActionResult> {
+  await saveNotifyPrefs(parsePrefs(JSON.stringify(p)));
+  return done("Saved");
 }

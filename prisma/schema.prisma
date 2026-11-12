@@ -364,3 +364,23 @@ model ReadItem {
 
   @@index([status, savedAt])
 }
+
+/// A device that gets push notifications (Web Push: the iPhone Home Screen app, desktop Chrome…).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  /// "iPhone", "Mac · Chrome"… shown on the settings card.
+  label     String?
+  createdAt DateTime @default(now())
+  lastUsed  DateTime?
+}
+
+/// Notifications already sent (one row per event/task reminder), so each is sent once.
+model NotificationLog {
+  key    String   @id
+  sentAt DateTime @default(now())
+
+  @@index([sentAt])
+}
