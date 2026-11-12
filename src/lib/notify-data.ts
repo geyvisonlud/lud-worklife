@@ -5,7 +5,7 @@ import { appTimeZone, ymdInTz } from "./dates";
 import { getSetting, setSetting } from "./settings";
 import { dueReminders, parsePrefs, type NotifyPrefs, type Reminder } from "./notify";
 
-const K = { pub: "vapidPublicKey", priv: "vapidPrivateKey", prefs: "notifyPrefs" };
+const K = { pub: "vapidPublicKey", priv: "vapidPrivateKey", prefs: "notifyPrefs", lastRun: "notifyLastRun" };
 
 /** The app's Web Push keys: made once and kept in the database (the private key encrypted), so nothing needs setting up. */
 export async function vapidKeys() {
@@ -51,6 +51,8 @@ export async function pushToAll(n: { title: string; body: string; url: string; t
 
 /** Check what's due now and send it (called every few minutes by the scheduled job). */
 export async function runReminders(now = new Date()) {
+  // Shown on the Notifications card ("Last check …") so it's easy to see the scheduled job is calling in.
+  await setSetting(K.lastRun, now.toISOString());
   const tz = appTimeZone();
   const today = ymdInTz(now, tz);
   const soon = new Date(now.getTime() + 61 * 60000);
@@ -84,4 +86,10 @@ export async function runReminders(now = new Date()) {
   // Keep two weeks of history.
   await prisma.notificationLog.deleteMany({ where: { sentAt: { lt: new Date(now.getTime() - 14 * 86400_000) } } });
   return { sent: fresh.length, due: due.length };
+}
+
+/** When the scheduled job last checked for reminders (null = never). */
+export async function lastReminderRun() {
+  const v = await getSetting(K.lastRun);
+  return v ? new Date(v) : null;
 }

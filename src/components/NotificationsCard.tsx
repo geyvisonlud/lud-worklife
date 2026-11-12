@@ -33,7 +33,7 @@ export function RegisterServiceWorker() {
 }
 
 /** Push notifications: turn them on for this device, choose what to be reminded of, send a test. */
-export function NotificationsCard({ devices: initialDevices, prefs: initialPrefs }: { devices: Device[]; prefs: NotifyPrefs }) {
+export function NotificationsCard({ devices: initialDevices, prefs: initialPrefs, lastRun }: { devices: Device[]; prefs: NotifyPrefs; lastRun: string | null }) {
   const report = useReport();
   const [state, setState] = useState<State>("loading");
   const [endpoint, setEndpoint] = useState<string | null>(null);
@@ -215,7 +215,21 @@ export function NotificationsCard({ devices: initialDevices, prefs: initialPrefs
           </ul>
         </div>
       )}
-      <p className="mt-3 text-[11.5px] text-ink-3">Reminders are checked every 5 minutes, so they can arrive a few minutes early or late.</p>
+      <LastCheck at={lastRun} />
     </section>
+  );
+}
+
+/** Is the scheduled job (cron-job.org / GitHub Actions) calling in? Green when the last check was recent. */
+function LastCheck({ at }: { at: string | null }) {
+  const mins = at ? Math.round((Date.now() - new Date(at).getTime()) / 60000) : null;
+  const ok = mins !== null && mins <= 15;
+  return (
+    <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ink-3">
+      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-good" : "bg-warn"}`} aria-hidden />
+      {mins === null
+        ? "Reminders haven't been checked yet — the scheduled job (cron-job.org) isn't calling in."
+        : `Last check for reminders: ${mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`}${ok ? "" : " — the scheduled job may have stopped"}.`}
+    </p>
   );
 }
