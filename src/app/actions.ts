@@ -80,6 +80,7 @@ function taskData(input: TaskInput, custom: string[] = []) {
   if (input.status !== undefined && isColumnOf("tasks", input.status, custom)) {
     data.status = input.status;
     data.completedAt = input.status === "done" ? new Date() : null;
+    if (input.status !== "done") data.archivedAt = null; // reopening brings it back from the archive
   }
   if (input.priority !== undefined) data.priority = Math.max(0, Math.min(3, Math.round(Number(input.priority) || 0)));
   if (input.dueDate !== undefined) data.dueDate = isYmd(input.dueDate) ? input.dueDate : null;
@@ -145,6 +146,25 @@ export async function moveTask(id: string, status: string, index: number, projec
   });
   const warn = t.googleTaskId && (t.status === "done") !== (status === "done") ? await pushGoogleTask(id) : null;
   return done(warn);
+}
+
+/** Puts done tasks away (they stay, restorable from Tasks → Archived). */
+export async function archiveTasks(ids: string[]) {
+  const n = (await prisma.task.updateMany({ where: { id: { in: ids.slice(0, 2000) }, status: "done", archivedAt: null }, data: { archivedAt: new Date() } })).count;
+  return done(n ? `${n} task${n === 1 ? "" : "s"} archived` : "Only done tasks can be archived");
+}
+
+/** Archives every done task (of one project, when given). */
+export async function archiveDoneTasks(projectId?: string | null) {
+  const n = (
+    await prisma.task.updateMany({ where: { status: "done", archivedAt: null, ...(projectId !== undefined ? { projectId } : {}) }, data: { archivedAt: new Date() } })
+  ).count;
+  return done(n ? `${n} done task${n === 1 ? "" : "s"} archived` : "No done tasks to archive");
+}
+
+export async function unarchiveTask(id: string) {
+  await prisma.task.updateMany({ where: { id }, data: { archivedAt: null } });
+  return done("Restored to Done");
 }
 
 export async function deleteTask(id: string) {

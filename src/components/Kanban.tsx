@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
   ArrowLeft,
   ArrowRight,
   CalendarClock,
@@ -20,6 +21,8 @@ import {
 } from "lucide-react";
 import {
   addColumn,
+  archiveDoneTasks,
+  archiveTasks,
   deleteColumn,
   deleteTask,
   moveColumn,
@@ -67,6 +70,7 @@ function Board<T extends Item>({
   onAdd,
   addForm,
   manualOrder = true,
+  columnAction,
 }: {
   board: BoardKind;
   columns: BoardColumnDTO[];
@@ -83,6 +87,15 @@ function Board<T extends Item>({
   addForm?: (column: string, close: () => void) => React.ReactNode;
   /** false when the toolbar sorts the cards: they still move between columns, but keep the sort. */
   manualOrder?: boolean;
+  /** An extra item in a column's ⋯ menu (e.g. "Archive done tasks"). */
+  columnAction?: (
+    column: string,
+    count: number,
+  ) => {
+    label: string;
+    icon: React.ReactNode;
+    run: () => Promise<ActionResult>;
+  } | null;
 }) {
   const report = useReport();
   const [local, setLocal] = useState(items);
@@ -187,6 +200,7 @@ function Board<T extends Item>({
                 first={ci === 0}
                 last={ci === visible.length - 1}
                 index={ci}
+                action={columnAction?.(c.key, all.length) ?? null}
               />
               <button
                 className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-[9px] border border-hairline bg-surface py-[7px] text-[13px] font-medium text-ink-2 shadow-[var(--shadow)] transition-colors hover:text-ink"
@@ -279,6 +293,7 @@ function ColumnHeader({
   first,
   last,
   index,
+  action,
 }: {
   board: BoardKind;
   column: BoardColumnDTO;
@@ -286,6 +301,11 @@ function ColumnHeader({
   first: boolean;
   last: boolean;
   index: number;
+  action: {
+    label: string;
+    icon: React.ReactNode;
+    run: () => Promise<ActionResult>;
+  } | null;
 }) {
   const report = useReport();
   const router = useRouter();
@@ -403,6 +423,11 @@ function ColumnHeader({
                 onClick={() => run(() => moveColumn(board, c.key, index + 1))}
               >
                 Move right
+              </MenuItem>
+            )}
+            {action && (
+              <MenuItem icon={action.icon} onClick={() => run(action.run)}>
+                {action.label}
               </MenuItem>
             )}
             {c.builtIn ? (
@@ -812,16 +837,30 @@ function TaskCard({
           current={t.column}
           onMove={move}
           extra={(close) => (
-            <button
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-bad hover:bg-surface-2"
-              onClick={() => (
-                close(),
-                start(async () => void report(await deleteTask(t.id)))
+            <>
+              {done && (
+                <button
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left hover:bg-surface-2"
+                  onClick={() => (
+                    close(),
+                    start(async () => void report(await archiveTasks([t.id])))
+                  )}
+                >
+                  <Archive size={13} className="text-ink-3" /> Archive
+                </button>
               )}
-            >
-              <Trash2 size={13} /> Delete task
-            </button>
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-bad hover:bg-surface-2"
+                onClick={() => (
+                  close(),
+                  start(async () => void report(await deleteTask(t.id)))
+                )}
+              >
+                <Trash2 size={13} /> Delete task
+              </button>
+            </>
           )}
         />
       </span>
@@ -938,6 +977,20 @@ export function TaskBoard({
         />
       )}
       onMove={(id, col, index) => moveTask(id, col, index, projectId)}
+      columnAction={(col, count) =>
+        col === "done" && count > 0
+          ? {
+              label: `Archive done tasks (${count})`,
+              icon: <Archive size={13} />,
+              run: () =>
+                projectId
+                  ? archiveDoneTasks(projectId)
+                  : archiveTasks(
+                      items.filter((t) => t.status === "done").map((t) => t.id),
+                    ),
+            }
+          : null
+      }
       renderCard={(t, { columns, move }) => (
         <TaskCard
           t={t}

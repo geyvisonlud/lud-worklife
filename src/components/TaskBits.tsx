@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { CalendarClock, Clock, Flag, Plus } from "lucide-react";
-import { createTask, toggleTask } from "@/app/actions";
+import { archiveTasks, createTask, toggleTask } from "@/app/actions";
 import { projectColor } from "@/lib/colors";
 import { formatClock, formatDuration, minutesInTz, relativeDay, ymdInTz, daysBetween } from "@/lib/dates";
 import type { TaskDTO } from "@/lib/data";
@@ -192,6 +192,17 @@ export function NewTaskButton({ projectId, label = "New task" }: { projectId?: s
   return (
     <button className="btn btn-primary" onClick={() => openTask(null, projectId ? { projectId } : {})}>
       <Plus size={15} /> {label}
+    </button>
+  );
+}
+
+/** "Archive" for a list of done tasks (the list view's Done card). */
+export function ArchiveDoneButton({ ids }: { ids: string[] }) {
+  const report = useReport();
+  const [pending, start] = useTransition();
+  return (
+    <button className="text-[12px] text-ink-2 hover:text-ink" disabled={pending} onClick={() => start(async () => void report(await archiveTasks(ids)))}>
+      Archive all
     </button>
   );
 }

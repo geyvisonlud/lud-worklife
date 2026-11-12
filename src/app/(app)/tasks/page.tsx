@@ -1,6 +1,9 @@
 import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import Link from "next/link";
-import { KanbanSquare, List } from "lucide-react";
+import { Archive, KanbanSquare, List } from "lucide-react";
+import { ArchivedTasks } from "@/components/ArchivedTasks";
+import { ArchiveDoneButton } from "@/components/TaskBits";
+import { prisma } from "@/lib/db";
 import { boardStats } from "@/lib/tasks";
 import { TaskBoardView } from "@/components/Kanban";
 import { OpenTask } from "@/components/OpenTask";
@@ -8,23 +11,25 @@ import { NewTaskButton, QuickAdd, TaskRow } from "@/components/TaskBits";
 import { Card } from "@/components/ui";
 import { projectColor } from "@/lib/colors";
 import { appTimeZone } from "@/lib/dates";
-import { listProjects, listTasks, today } from "@/lib/data";
+import { listProjects, listTasks, taskDTO, today } from "@/lib/data";
 import { BUCKETS, groupTasks } from "@/lib/tasks";
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ view?: string; project?: string; task?: string; done?: string }> }) {
   const sp = await searchParams;
-  const view = sp.view === "list" ? "list" : "board";
+  const view = sp.view === "list" ? "list" : sp.view === "archived" ? "archived" : "board";
   const showDone = sp.done === "1";
   const projectFilter = sp.project === "inbox" ? null : sp.project;
   const tz = appTimeZone();
   const day = today();
-  const [tasks, projects] = await Promise.all([
+  const [tasks, projects, archived, archivedCount] = await Promise.all([
     listTasks({
       ...(sp.project && view === "list" ? { projectId: projectFilter ?? null } : {}),
       // Board: open tasks + done in the last 30 days; list: + done in the last 2 days (or all).
       ...(showDone ? {} : { OR: [{ status: { not: "done" } }, { completedAt: { gte: new Date(Date.now() - (view === "board" ? 30 : 2) * 86400_000) } }] }),
     }),
     listProjects(),
+    view === "archived" ? prisma.task.findMany({ where: { archivedAt: { not: null } }, orderBy: [{ completedAt: "desc" }, { archivedAt: "desc" }], take: 1000 }).then((r) => r.map(taskDTO)) : [],
+    prisma.task.count({ where: { archivedAt: { not: null } } }),
   ]);
   const g = groupTasks(tasks, day, tz);
   const stats = boardStats(tasks, day);
@@ -59,6 +64,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             [
               ["board", "Board", KanbanSquare],
               ["list", "List", List],
+              ["archived", `Archived${archivedCount ? ` ${archivedCount}` : ""}`, Archive],
             ] as const
           ).map(([v, label, Icon]) => (
             <Link
@@ -93,7 +99,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         </nav>
       )}
 
-      {view === "board" ? (
+      {view === "archived" ? (
+        <ArchivedTasks tasks={archived} />
+      ) : view === "board" ? (
         <TaskBoardView tasks={tasks} initialProject={sp.project === "inbox" ? "none" : sp.project} />
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
@@ -124,9 +132,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             <Card
               title={`Done${showDone ? "" : " · last 2 days"}`}
               action={
-                <Link href={q({ done: showDone ? undefined : "1" })} className="text-[12px] text-accent">
-                  {showDone ? "Recent only" : "Show all"}
-                </Link>
+                <span className="flex items-center gap-3">
+                  {g.done.length > 0 && <ArchiveDoneButton ids={g.done.map((t) => t.id)} />}
+                  <Link href={q({ done: showDone ? undefined : "1" })} className="text-[12px] text-accent">
+                    {showDone ? "Recent only" : "Show all"}
+                  </Link>
+                </span>
               }
             >
               {g.done.map((t) => (

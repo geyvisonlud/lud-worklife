@@ -61,7 +61,9 @@ export async function syncTaskLists(accountId: string) {
           continue;
         }
         const data = applyRemote(local, r);
-        await prisma.task.update({ where: { id: local.id }, data: { ...data, googleTaskUpdated: r.updated } });
+        // Reopened in Google: an archived task comes back.
+        const unarchive = data.status && data.status !== "done" ? { archivedAt: null } : {};
+        await prisma.task.update({ where: { id: local.id }, data: { ...data, ...unarchive, googleTaskUpdated: r.updated } });
         if (Object.keys(data).length) updated++;
         if ((data.title !== undefined || data.notes !== undefined) && local.googleEventId) await mirrorTask(local.id);
       }

@@ -18,7 +18,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const row = await prisma.project.findUnique({ where: { id }, include: { tasks: { orderBy: [{ position: "asc" }, { createdAt: "asc" }] } } });
   if (!row) notFound();
   const p = projectDTO(row);
-  const tasks = row.tasks.map(taskDTO);
+  const tasks = row.tasks.filter((t) => !t.archivedAt).map(taskDTO);
   const c = projectColor(p.color);
   const blocks = notionContent(row);
   const showNotion = tab === "notion" && p.source === "notion";

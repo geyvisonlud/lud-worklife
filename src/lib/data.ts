@@ -25,6 +25,7 @@ export type TaskDTO = {
   fromGoogleTasks: boolean;
   inGoogle: boolean;
   completedAt: string | null;
+  archivedAt: string | null;
 };
 
 export type ProjectDTO = {
@@ -77,6 +78,7 @@ export const taskDTO = (t: Task): TaskDTO => ({
   fromGoogleTasks: Boolean(t.googleTaskId && t.googleTaskListId),
   inGoogle: Boolean(t.googleEventId),
   completedAt: t.completedAt?.toISOString() ?? null,
+  archivedAt: t.archivedAt?.toISOString() ?? null,
 });
 
 export const projectDTO = (p: Project & { tasks?: { status: string }[] }): ProjectDTO => ({
@@ -138,8 +140,10 @@ export async function listProjects(opts: { includeArchived?: boolean } = {}) {
   return rows.map(projectDTO);
 }
 
+/** Tasks, without archived ones unless `where` asks about `archivedAt` or a specific `id`. */
 export async function listTasks(where: Prisma.TaskWhereInput = {}) {
-  const rows = await prisma.task.findMany({ where, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
+  const scoped = "archivedAt" in where || "id" in where ? where : { archivedAt: null, ...where };
+  const rows = await prisma.task.findMany({ where: scoped, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
   return rows.map(taskDTO);
 }
 
@@ -168,7 +172,7 @@ export async function calendarTasks(from: string, to: string) {
   const start = dayBounds(from, tz)[0];
   const end = dayBounds(addDays(to, -1), tz)[1];
   const rows = await prisma.task.findMany({
-    where: { OR: [{ scheduledStart: { gte: new Date(start.getTime() - 86400_000), lt: end } }, { scheduledStart: null, status: { not: "done" } }] },
+    where: { archivedAt: null, OR: [{ scheduledStart: { gte: new Date(start.getTime() - 86400_000), lt: end } }, { scheduledStart: null, status: { not: "done" } }] },
     orderBy: [{ position: "asc" }],
   });
   return rows.map(taskDTO);

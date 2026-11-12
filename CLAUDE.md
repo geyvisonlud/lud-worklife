@@ -49,6 +49,10 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   `useWork().taskColumns/projectColumns` — label any status with `columnLabel`. Tasks opens on Board (`?view=list` for the list);
   toolbar filters/sort are client-side (`filterBoardTasks`, `boardStats`, `flagDate` in lib/tasks.ts, tested). The sidebar lists
   projects that aren't done (open task counts, + new project).
+- Archive: done tasks can be archived (`Task.archivedAt`; `archiveTasks`, `archiveDoneTasks`, `unarchiveTask`) from a card's ⋯,
+  the Done column's ⋯ ("Archive done tasks") or the list's Done card. Archived tasks are hidden everywhere (`listTasks` and
+  `calendarTasks` skip them unless asked) but still count in project progress; Tasks → Archived (`?view=archived`) restores or
+  deletes them. Reopening a task (status ≠ done, here or from Google Tasks) clears `archivedAt`.
 - Google colors: store the *current* palette color (`googleCalendarColor`); `customColor` is a local override.
 - Task time blocks mirrored to Google carry `extendedProperties.private.ludTaskId`; `mapEvent` skips them so they aren't shown twice.
 - Notion: read-only. `importPage` decides by `assignedVia` (People property) or `@mention`; `stageOverridden` stops Notion's
