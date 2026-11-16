@@ -18,13 +18,20 @@ describe("task buckets", () => {
     // Scheduled for later but already past due → overdue.
     expect(bucketOf(t({ dueDate: "2026-11-03", scheduledStart: new Date("2026-11-07T15:00:00Z") }), TODAY, NY)).toBe("overdue");
   });
-  it("sorts scheduled first, then due date, then priority", () => {
+  it("sorts time blocks first, then the manual order; upcoming by day", () => {
     const g = groupTasks(
-      [t({ id: "a", dueDate: TODAY, priority: 1 }), t({ id: "b", dueDate: TODAY, priority: 3 }), t({ id: "c", scheduledStart: new Date("2026-11-05T14:00:00Z") })],
+      [
+        t({ id: "a", dueDate: TODAY, priority: 3, position: 2 }),
+        t({ id: "b", dueDate: TODAY, priority: 1, position: 1 }),
+        t({ id: "c", scheduledStart: new Date("2026-11-05T14:00:00Z") }),
+        t({ id: "u2", dueDate: "2026-11-09", position: 1 }),
+        t({ id: "u1", dueDate: "2026-11-07", position: 5 }),
+      ],
       TODAY,
       NY,
     );
     expect(g.today.map((x) => x.id)).toEqual(["c", "b", "a"]);
+    expect(g.upcoming.map((x) => x.id)).toEqual(["u1", "u2"]);
   });
   it("summarizes the day", () => {
     const s = daySummary(
@@ -89,5 +96,29 @@ describe("board toolbar", () => {
     expect(flagDate("2026-11-06", TODAY)).toBe("Tomorrow");
     expect(flagDate("2026-11-20", TODAY)).toBe("Nov 20");
     expect(flagDate("2027-01-02", TODAY)).toBe("Jan 2, 2027");
+  });
+});
+
+import { dropTask } from "./tasks";
+
+describe("drag to reorder", () => {
+  const r = (id: string, position: number, o: Partial<{ scheduledStart: string; dueDate: string; group: string }> = {}) => ({ id, position, scheduledStart: o.scheduledStart ?? null, dueDate: o.dueDate ?? null, group: o.group ?? "g" });
+  const list = [r("a", 1024), r("b", 2048), r("c", 3072)];
+  it("moves between neighbours", () => {
+    expect(dropTask(list, "c", 0)).toEqual({ position: 0 });
+    expect(dropTask(list, "a", 3)).toEqual({ position: 4096 });
+    expect(dropTask(list, "a", 2)).toEqual({ position: 2560 });
+    expect(dropTask(list, "b", 1)).toBeNull(); // same place
+  });
+  it("skips time blocks and doesn't move them", () => {
+    const l = [r("t", 0, { scheduledStart: "2026-11-05T14:00:00Z" }), r("a", 1024), r("b", 2048)];
+    expect(dropTask(l, "t", 2)).toBeNull();
+    expect(dropTask(l, "b", 0)).toEqual({ position: 0 });
+  });
+  it("adopts the date of the group it lands in", () => {
+    const l = [r("o", 5000, { group: "overdue" }), r("x", 1024, { group: "today" }), r("y", 2048, { group: "today" })];
+    const opts = { key: (t: (typeof l)[number]) => t.group, dateOf: (k: string) => (k === "today" ? "2026-11-05" : null) };
+    expect(dropTask(l, "o", 2, opts)).toEqual({ position: 1536, dueDate: "2026-11-05" });
+    expect(dropTask(l, "y", 0, opts)).toBeNull(); // today → overdue isn't allowed
   });
 });

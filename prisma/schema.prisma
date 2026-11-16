@@ -95,6 +95,8 @@ model Event {
   meetLink       String?
   /// Our response: accepted | tentative | declined | needsAction (null when we're the organizer).
   responseStatus String?
+  /// Last edit made here (create/edit sheet): a sync that started before it won't overwrite it with older data.
+  editedAt       DateTime?
   notes          Note[]
 
   @@unique([calendarId, externalId])

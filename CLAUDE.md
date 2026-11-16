@@ -53,6 +53,14 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   the Done column's ⋯ ("Archive done tasks") or the list's Done card. Archived tasks are hidden everywhere (`listTasks` and
   `calendarTasks` skip them unless asked) but still count in project progress; Tasks → Archived (`?view=archived`) restores or
   deletes them. Reopening a task (status ≠ done, here or from Google Tasks) clears `archivedAt`.
+- Lists (Tasks → List, Today "To do today" + Inbox) use `SortableTasks` (TaskBits): a grip on each row drags it (pointer events,
+  works with touch); `dropTask` (lib/tasks.ts, tested) gives the new `position` and, in "focus"/"upcoming" lists, a new due date
+  when dropped in another group; saved by `reorderTask`. List order = time blocks by time, then `position` (`compareTasks`;
+  Upcoming by day first). Checking a task plays a short animation (`.task-check*`, `.task-title` strike in globals.css; rows
+  carry `data-task`) and saves ~0.5 s later.
+- Background "sync if stale" calls go through `POST /api/sync/stale` (a route handler), not server actions — server actions
+  from one page run one at a time, so a long sync would hold saves behind it. `Event.editedAt` marks edits made here: a sync
+  that listed Google before the edit neither overwrites nor deletes that row. `updateEvent` stores Google's PATCH response.
 - Google colors: store the *current* palette color (`googleCalendarColor`); `customColor` is a local override.
 - Task time blocks mirrored to Google carry `extendedProperties.private.ludTaskId`; `mapEvent` skips them so they aren't shown twice.
 - Notion: read-only. `importPage` decides by `assignedVia` (People property) or `@mention`; `stageOverridden` stops Notion's

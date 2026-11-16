@@ -42,19 +42,22 @@ export const BUCKETS: { key: Bucket; label: string }[] = [
   { key: "done", label: "Done" },
 ];
 
-/** Sort within a list: scheduled time, then priority (high first), then manual order. */
+/** Sort within a list: time blocks first (by time), then the manual order (drag to reorder). */
 export function compareTasks(a: TaskLike, b: TaskLike) {
   const sa = a.scheduledStart ? new Date(a.scheduledStart).getTime() : Infinity;
   const sb = b.scheduledStart ? new Date(b.scheduledStart).getTime() : Infinity;
   if (sa !== sb) return sa - sb;
-  if (a.dueDate !== b.dueDate) return (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999");
-  return b.priority - a.priority || a.position - b.position;
+  return a.position - b.position || b.priority - a.priority;
 }
+
+/** Upcoming: by day, then like any list. */
+export const compareUpcoming = (tz: string) => (a: TaskLike, b: TaskLike) =>
+  (taskDay(a, tz) ?? "9999").localeCompare(taskDay(b, tz) ?? "9999") || compareTasks(a, b);
 
 export function groupTasks<T extends TaskLike>(tasks: T[], today: string, tz: string) {
   const out: Record<Bucket, T[]> = { overdue: [], today: [], upcoming: [], inbox: [], done: [] };
   for (const t of tasks) out[bucketOf(t, today, tz)].push(t);
-  for (const k of Object.keys(out) as Bucket[]) out[k].sort(compareTasks);
+  for (const k of Object.keys(out) as Bucket[]) out[k].sort(k === "upcoming" ? compareUpcoming(tz) : compareTasks);
   return out;
 }
 
@@ -157,4 +160,42 @@ export function flagDate(day: string, today: string) {
   const [y, m, d] = day.split("-").map(Number);
   const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
   return `${mon} ${d}${String(y) !== today.slice(0, 4) ? `, ${y}` : ""}`;
+}
+
+/* ------------------------------------------------------ list reordering */
+
+type Sortable = { id: string; position: number; scheduledStart: Date | string | null };
+
+/**
+ * Dropping a task at `index` in a list (display order, the task included): its new manual position, and a new due
+ * date when it lands in another group (e.g. an overdue task dropped among today's → due today). `key` names a task's
+ * group; `dateOf(key)` is the date to adopt there, or null when it can't move there. Tasks with a time block keep
+ * their place (they're ordered by time), so they can't be moved and don't count as neighbours.
+ * Returns null when nothing should change.
+ */
+export function dropTask<T extends Sortable>(list: T[], id: string, index: number, opts: { key?: (t: T) => string; dateOf?: (key: string) => string | null } = {}) {
+  const moved = list.find((t) => t.id === id);
+  if (!moved || moved.scheduledStart) return null;
+  const key = opts.key ?? (() => "");
+  const from = list.indexOf(moved);
+  const others = list.filter((t) => t.id !== id);
+  const i = Math.max(0, Math.min(others.length, index > from ? index - 1 : index));
+  const above = others[i - 1];
+  const below = others[i];
+  const own = key(moved);
+  const target = [above, below].some((n) => n && key(n) === own) ? own : above ? key(above) : below ? key(below) : own;
+  let dueDate: string | undefined;
+  if (target !== own) {
+    const d = opts.dateOf?.(target) ?? null;
+    if (!d) return null;
+    dueDate = d;
+  }
+  const free = (t: T | undefined) => t && !t.scheduledStart && key(t) === target;
+  let before: T | undefined;
+  for (let k = i - 1; k >= 0; k--) if (free(others[k])) (before = others[k]), (k = -1);
+  let after: T | undefined;
+  for (let k = i; k < others.length; k++) if (free(others[k])) (after = others[k]), (k = others.length);
+  const position = before == null && after == null ? moved.position : before == null ? after!.position - 1024 : after == null ? before.position + 1024 : (before.position + after.position) / 2;
+  if (!dueDate && index === from) return null;
+  return { position, ...(dueDate ? { dueDate } : {}) };
 }

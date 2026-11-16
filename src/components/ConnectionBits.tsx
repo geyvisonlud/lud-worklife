@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw, Unplug } from "lucide-react";
-import { setEmailEnabled, setTaskListEnabled, syncGoogleTasksIfStale, connectNotionToken, disconnectCalendarAccount, disconnectNotion, setCalendarColor, setCalendarVisible, syncCalendarsNow, syncNotionNow, type ActionResult } from "@/app/actions";
+import { setEmailEnabled, setTaskListEnabled, connectNotionToken, disconnectCalendarAccount, disconnectNotion, setCalendarColor, setCalendarVisible, syncCalendarsNow, syncNotionNow, type ActionResult } from "@/app/actions";
 import { CALENDAR_SWATCHES } from "@/lib/colors";
 import type { CalendarDTO } from "@/lib/data";
 import { useReport } from "./TaskSheet";
@@ -190,8 +190,9 @@ export function TaskListToggle({ id, title, enabled }: { id: string; title: stri
 export function GoogleTasksAutoSync() {
   const router = useRouter();
   useEffect(() => {
-    syncGoogleTasksIfStale()
-      .then((r) => r.synced && router.refresh())
+    fetch("/api/sync/stale?what=tasks", { method: "POST" })
+      .then((r) => r.json())
+      .then((r: { synced?: boolean }) => r.synced && router.refresh())
       .catch(() => {});
   }, [router]);
   return null;

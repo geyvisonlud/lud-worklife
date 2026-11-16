@@ -813,3 +813,43 @@ dialog.sheet[open] {
     animation: none;
   }
 }
+
+/* ------------------------------------------------- task done animation */
+/* The checkbox pops, a ring bursts out and the check draws itself; the row's title strikes through and fades.
+   Rows mark themselves with [data-task]; the title is .task-title (works for done tasks from the server too). */
+.task-check[data-burst][aria-checked="true"] {
+  animation: task-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.task-check-ring {
+  box-shadow: 0 0 0 2px var(--good);
+  animation: task-ring 0.55s ease-out forwards;
+}
+.task-check-draw path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: task-draw 0.3s 0.08s ease-out forwards;
+}
+.task-title {
+  background: linear-gradient(currentColor, currentColor) left 56% / 0 1.5px no-repeat;
+  transition: background-size 0.35s ease, color 0.35s ease, opacity 0.35s ease;
+}
+[data-task]:has([role="checkbox"][aria-checked="true"]) .task-title {
+  background-size: 100% 1.5px;
+  color: var(--ink-3);
+}
+@keyframes task-pop {
+  0% { transform: scale(0.7); }
+  55% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@keyframes task-ring {
+  0% { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 0; transform: scale(2.2); }
+}
+@keyframes task-draw {
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-check[data-burst][aria-checked="true"], .task-check-ring, .task-check-draw path { animation: none; stroke-dashoffset: 0; }
+  .task-title { transition: none; }
+}

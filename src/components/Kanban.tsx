@@ -808,6 +808,7 @@ function TaskCard({
       tabIndex={0}
       onClick={() => openTask(t)}
       onKeyDown={(e) => e.key === "Enter" && openTask(t)}
+      data-task
       className="relative rounded-[12px] border border-hairline bg-surface p-3 shadow-[var(--shadow)] transition-shadow hover:shadow-[var(--shadow-lift)]"
     >
       {(pr || t.fromGoogleTasks || t.fromNotion) && (
@@ -893,10 +894,8 @@ function TaskCard({
         <span className="pt-[2px]" onClick={(e) => e.stopPropagation()}>
           <TaskCheck task={t} size={15} />
         </span>
-        <div
-          className={`min-w-0 text-[14px] font-semibold leading-snug tracking-[-0.01em] ${done ? "text-ink-3 line-through" : ""}`}
-        >
-          {t.title}
+        <div className="min-w-0 text-[14px] font-semibold leading-snug tracking-[-0.01em]">
+          <span className="task-title">{t.title}</span>
         </div>
       </div>
       {desc && (

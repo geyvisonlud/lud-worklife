@@ -185,14 +185,16 @@ export function TaskTable({ tasks, projects, limit = 8 }: { tasks: TaskDTO[]; pr
               const st = STATUS_PILL[t.status] ?? STATUS_PILL.todo;
               const overdue = t.dueDate && t.dueDate < today;
               return (
-                <tr key={t.id} onClick={() => openTask(t)} className="cursor-pointer border-b border-hairline last:border-b-0 hover:bg-surface-2/60">
+                <tr key={t.id} data-task onClick={() => openTask(t)} className="cursor-pointer border-b border-hairline last:border-b-0 hover:bg-surface-2/60">
                   <td className="py-2.5 pl-[var(--pad-x)] pr-3">
                     <div className="flex items-start gap-2.5">
                       <span className="pt-[1px]" onClick={(e) => e.stopPropagation()}>
                         <TaskCheck task={t} size={16} />
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate font-medium">{t.title}</div>
+                        <div className="truncate font-medium">
+                          <span className="task-title">{t.title}</span>
+                        </div>
                         <div className="truncate text-[11.5px] text-ink-3 md:hidden">
                           {p ? p.name : "No project"}
                           {t.dueDate ? ` · ${formatDay(t.dueDate)}` : ""}

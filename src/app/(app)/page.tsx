@@ -12,7 +12,7 @@ import { BibleTodayBox } from "@/components/Bible";
 import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
 import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
-import { QuickAdd, TaskRow } from "@/components/TaskBits";
+import { QuickAdd, SortableTasks } from "@/components/TaskBits";
 import { Card, NotionMark, ProjectGlyph, notionReasonLabel } from "@/components/ui";
 import { projectColor } from "@/lib/colors";
 import { prisma } from "@/lib/db";
@@ -153,17 +153,13 @@ export default async function TodayPage() {
         <Card title="To do today" href="/tasks" className="order-2 lg:order-none">
           <QuickAdd placeholder="Add a task for today…" dueToday />
           <div className="mt-2">
-            {focusList.map((t) => (
-              <TaskRow key={t.id} task={t} />
-            ))}
+            <SortableTasks tasks={focusList} group="focus" />
             {!focusList.length && <p className="py-6 text-center text-[14px] text-ink-2">Nothing due today. Pick something from the inbox?</p>}
           </div>
           {g.inbox.length > 0 && (
             <>
               <div className="section-label mb-1 mt-4">Inbox · {g.inbox.length}</div>
-              {g.inbox.slice(0, 4).map((t) => (
-                <TaskRow key={t.id} task={t} compact />
-              ))}
+              <SortableTasks tasks={g.inbox.slice(0, 4)} compact />
             </>
           )}
         </Card>

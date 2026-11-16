@@ -2,7 +2,7 @@ import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import Link from "next/link";
 import { Archive, KanbanSquare, List } from "lucide-react";
 import { ArchivedTasks } from "@/components/ArchivedTasks";
-import { ArchiveDoneButton } from "@/components/TaskBits";
+import { ArchiveDoneButton, SortableTasks } from "@/components/TaskBits";
 import { prisma } from "@/lib/db";
 import { boardStats } from "@/lib/tasks";
 import { TaskBoardView } from "@/components/Kanban";
@@ -113,9 +113,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             {(["overdue", "today"] as const).map((b) =>
               g[b].length ? (
                 <Card key={b} title={`${BUCKETS.find((x) => x.key === b)!.label} · ${g[b].length}`}>
-                  {g[b].map((t) => (
-                    <TaskRow key={t.id} task={t} showProject={!sp.project} />
-                  ))}
+                  <SortableTasks tasks={g[b]} showProject={!sp.project} />
                 </Card>
               ) : null,
             )}
@@ -123,9 +121,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           <div className="space-y-5">
             {(["upcoming", "inbox"] as const).map((b) => (
               <Card key={b} title={`${BUCKETS.find((x) => x.key === b)!.label} · ${g[b].length}`}>
-                {g[b].map((t) => (
-                  <TaskRow key={t.id} task={t} showProject={!sp.project} />
-                ))}
+                <SortableTasks tasks={g[b]} showProject={!sp.project} group={b === "upcoming" ? "upcoming" : undefined} />
                 {!g[b].length && <p className="py-4 text-center text-[13.5px] text-ink-3">{b === "inbox" ? "Inbox zero." : "Nothing coming up."}</p>}
               </Card>
             ))}

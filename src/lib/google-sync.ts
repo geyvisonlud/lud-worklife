@@ -62,6 +62,8 @@ export async function syncAccount(accountId: string) {
     const calendars = await prisma.calendar.findMany({ where: { accountId, visible: true } });
     let count = 0;
     for (const cal of calendars) {
+      // Edits made here while this list is being fetched are newer than what Google sends back: keep them.
+      const listedAt = new Date();
       const raw = await googleList<GoogleEvent>(token, `/calendars/${encodeURIComponent(cal.externalId)}/events`, {
         timeMin: from.toISOString(),
         timeMax: to.toISOString(),
@@ -70,7 +72,11 @@ export async function syncAccount(accountId: string) {
         maxResults: "2500",
       });
       const rows = raw.map((e) => mapEvent(e, cal.timeZone ?? appTimeZone())).filter((e): e is NonNullable<typeof e> => e !== null);
+      const editedSince = new Set(
+        (await prisma.event.findMany({ where: { calendarId: cal.id, editedAt: { gte: listedAt } }, select: { externalId: true } })).map((x) => x.externalId),
+      );
       for (const r of rows) {
+        if (editedSince.has(r.externalId)) continue;
         await prisma.event.upsert({
           where: { calendarId_externalId: { calendarId: cal.id, externalId: r.externalId } },
           create: { ...r, calendarId: cal.id },
@@ -79,7 +85,13 @@ export async function syncAccount(accountId: string) {
       }
       // Events inside the window that Google no longer returns were deleted or moved out.
       await prisma.event.deleteMany({
-        where: { calendarId: cal.id, start: { gte: from, lt: to }, externalId: { notIn: rows.map((r) => r.externalId) } },
+        where: {
+          calendarId: cal.id,
+          start: { gte: from, lt: to },
+          externalId: { notIn: rows.map((r) => r.externalId) },
+          // …but not one created or edited here after the list was fetched.
+          OR: [{ editedAt: null }, { editedAt: { lt: listedAt } }],
+        },
       });
       count += rows.length;
     }

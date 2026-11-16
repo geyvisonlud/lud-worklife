@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarPlus, CheckCircle2, Pencil, Trash2, ChevronLeft, ChevronRight, ExternalLink, Inbox, MapPin, Plus, RefreshCw, Video } from "lucide-react";
-import { createEvent, createTask, deleteEvent, updateEvent, scheduleTask, setCalendarVisible, syncCalendarsNow, syncIfStale } from "@/app/actions";
+import { createEvent, createTask, deleteEvent, updateEvent, scheduleTask, setCalendarVisible, syncCalendarsNow } from "@/app/actions";
 import { dragRange, hm } from "@/lib/events";
 import { layoutDay, clipToDay } from "@/lib/calendar-layout";
 import { projectColor } from "@/lib/colors";
@@ -32,7 +32,7 @@ export function CalendarView({
   days,
   view,
   anchor,
-  events,
+  events: serverEvents,
   tasks,
   calendars,
   hasAccounts,
@@ -50,6 +50,10 @@ export function CalendarView({
   explicitView: boolean;
 }) {
   const { tz, today, projects, openTask, defaultDuration } = useWork();
+  // Edits show right away (Google + the database are updated in the background, then the page refreshes).
+  const [patched, setPatched] = useState<Record<string, Partial<EventDTO>>>({});
+  useEffect(() => setPatched({}), [serverEvents]);
+  const events = useMemo(() => serverEvents.map((e) => (patched[e.id] ? { ...e, ...patched[e.id] } : e)), [serverEvents, patched]);
   const report = useReport();
   const router = useRouter();
   const [local, setLocal] = useState(tasks);
@@ -77,7 +81,11 @@ export function CalendarView({
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
-    syncIfStale().catch(() => {});
+    // A route handler, so saving an event isn't queued behind this sync (server actions run one at a time).
+    fetch("/api/sync/stale", { method: "POST" })
+      .then((r) => r.json())
+      .then((r: { synced?: boolean }) => r.synced && router.refresh())
+      .catch(() => {});
     return () => clearInterval(t);
   }, []);
 
@@ -677,6 +685,7 @@ export function CalendarView({
           editing={editing}
           calendars={calendars.filter((c) => c.canWrite || c.id === editing.calendarId)}
           onClose={() => setEditing(null)}
+          onSaved={(patch) => setPatched((p) => ({ ...p, [editing.id]: patch }))}
         />
       )}
     </div>
@@ -810,7 +819,19 @@ const plain = (html: string | null) =>
     .replace(/&amp;/g, "&")
     .trim();
 
-function NewItemSheet({ item, editing, calendars, onClose }: { item: NewItem & { endDay?: string }; editing?: EventDTO; calendars: CalendarDTO[]; onClose: () => void }) {
+function NewItemSheet({
+  item,
+  editing,
+  calendars,
+  onClose,
+  onSaved,
+}: {
+  item: NewItem & { endDay?: string };
+  editing?: EventDTO;
+  calendars: CalendarDTO[];
+  onClose: () => void;
+  onSaved?: (patch: Partial<EventDTO>) => void;
+}) {
   const { tz, openTask } = useWork();
   const report = useReport();
   const router = useRouter();
@@ -854,7 +875,22 @@ function NewItemSheet({ item, editing, calendars, onClose }: { item: NewItem & {
         }
         const input = { title, date: day, allDay, start, end, endDate: endDay, location, description: notes };
         const r = editing ? await updateEvent(editing.id, input) : await createEvent({ calendarId, ...input });
-        if (report(r)) (onClose(), router.refresh());
+        if (report(r)) {
+          if (editing && onSaved) {
+            const last = endDay >= day ? endDay : day;
+            const s = zonedToUtc(day, toMin(start), tz);
+            const en = zonedToUtc(toMin(end) <= toMin(start) ? addDays(day, 1) : day, toMin(end), tz);
+            onSaved({
+              title: title.trim() || editing.title,
+              location: location.trim() || null,
+              allDay,
+              start: allDay ? `${day}T00:00:00.000Z` : s.toISOString(),
+              end: allDay ? `${addDays(last, 1)}T00:00:00.000Z` : en.toISOString(),
+            });
+          }
+          onClose();
+          router.refresh();
+        }
       } else {
         const r = await createTask({
           title: title || "New task",

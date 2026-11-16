@@ -10,7 +10,7 @@ import { isHex, isProjectColor } from "@/lib/colors";
 import { appTimeZone, isYmd, ymdInTz, zonedToUtc } from "@/lib/dates";
 import { isColumnOf, isCustomColumn, mergeColumns, isProjectStage, isTaskStatus, newColumnKey, positionAt, type Board } from "@/lib/kanban";
 import { accessToken, mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
-import { googleApi } from "@/lib/google";
+import { googleApi, mapEvent, type GoogleEvent } from "@/lib/google";
 import { deleteGoogleTask, pushGoogleTask, syncAllTaskLists, syncTaskLists, unlinkLists } from "@/lib/google-tasks-sync";
 import { findUserByEmail, notionApi } from "@/lib/notion";
 import { syncAllNotion, syncNotionConnection } from "@/lib/notion-sync";
@@ -146,6 +146,16 @@ export async function moveTask(id: string, status: string, index: number, projec
   });
   const warn = t.googleTaskId && (t.status === "done") !== (status === "done") ? await pushGoogleTask(id) : null;
   return done(warn);
+}
+
+/** Drag in a list: a new manual position (and a new due date when it was dropped in another day's group). */
+export async function reorderTask(id: string, position: number, dueDate?: string) {
+  if (!Number.isFinite(position)) return fail("Couldn't move that task.");
+  const t = await prisma.task.findUnique({ where: { id } });
+  if (!t) return fail("That task no longer exists.");
+  await prisma.task.update({ where: { id }, data: { position, ...(dueDate && isYmd(dueDate) ? { dueDate } : {}) } });
+  const warn = dueDate && t.googleTaskId && dueDate !== t.dueDate ? await pushGoogleTask(id) : null;
+  return done(warn ?? (dueDate && dueDate !== t.dueDate ? "Moved — due date updated" : undefined));
 }
 
 /** Puts done tasks away (they stay, restorable from Tasks → Archived). */
@@ -696,7 +706,7 @@ async function insertEvent(
     externalId = created.id;
     htmlLink = created.htmlLink ?? null;
   }
-  return prisma.event.create({ data: { calendarId: cal.id, externalId, htmlLink, location: row.location ?? null, ...row } });
+  return prisma.event.create({ data: { calendarId: cal.id, externalId, htmlLink, location: row.location ?? null, ...row, editedAt: new Date() } });
 }
 
 export type EventInput = { calendarId: string; title: string; date: string; allDay: boolean; start: string; end: string; endDate?: string; location?: string; description?: string };
@@ -755,13 +765,24 @@ export async function updateEvent(id: string, input: Omit<EventInput, "calendarI
   const e = eventFromInput(input);
   if (!e) return fail("Pick a day, and a start and end time.");
   try {
+    let row: Record<string, unknown> = e.row;
     if (ev.calendar.account.provider === "google") {
       const token = await accessToken(ev.calendar.account);
-      // null clears what was removed here (location / description)
-      const body = { ...e.google, location: e.google.location ?? null, description: e.google.description ?? null };
-      await googleApi(token, `/calendars/${encodeURIComponent(ev.calendar.externalId)}/events/${encodeURIComponent(ev.externalId)}`, { method: "PATCH", body });
+      // null clears what was removed here (location / description) and the other kind of time
+      // (switching between all-day and timed needs date / dateTime cleared, or Google rejects or ignores it).
+      const g = e.google as { start: Record<string, unknown>; end: Record<string, unknown> };
+      const clearOther = (t: Record<string, unknown>) => ("date" in t ? { ...t, dateTime: null, timeZone: null } : { ...t, date: null });
+      const body = { ...e.google, start: clearOther(g.start), end: clearOther(g.end), location: e.google.location ?? null, description: e.google.description ?? null };
+      const saved = await googleApi<GoogleEvent>(token, `/calendars/${encodeURIComponent(ev.calendar.externalId)}/events/${encodeURIComponent(ev.externalId)}`, { method: "PATCH", body });
+      // Store what Google now holds (it's the source of truth on the next sync).
+      const mapped = saved ? mapEvent(saved, ev.calendar.timeZone ?? appTimeZone()) : null;
+      if (mapped) {
+        const { externalId: _x, ...rest } = mapped;
+        void _x;
+        row = rest;
+      }
     }
-    await prisma.event.update({ where: { id }, data: e.row });
+    await prisma.event.update({ where: { id }, data: { ...row, editedAt: new Date() } });
     return done("Event updated");
   } catch (err) {
     return fail(`Couldn't update the event: ${(err as Error).message}`);
