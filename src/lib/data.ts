@@ -26,6 +26,8 @@ export type TaskDTO = {
   inGoogle: boolean;
   completedAt: string | null;
   archivedAt: string | null;
+  /** Notes, Drive files and links referenced from the task. */
+  attachments: number;
 };
 
 export type ProjectDTO = {
@@ -63,7 +65,7 @@ export type EventDTO = {
   declined: boolean;
 };
 
-export const taskDTO = (t: Task): TaskDTO => ({
+export const taskDTO = (t: Task & { _count?: { attachments?: number } }): TaskDTO => ({
   id: t.id,
   title: t.title,
   notes: t.notes,
@@ -79,6 +81,7 @@ export const taskDTO = (t: Task): TaskDTO => ({
   inGoogle: Boolean(t.googleEventId),
   completedAt: t.completedAt?.toISOString() ?? null,
   archivedAt: t.archivedAt?.toISOString() ?? null,
+  attachments: t._count?.attachments ?? 0,
 });
 
 export const projectDTO = (p: Project & { tasks?: { status: string }[] }): ProjectDTO => ({
@@ -143,7 +146,7 @@ export async function listProjects(opts: { includeArchived?: boolean } = {}) {
 /** Tasks, without archived ones unless `where` asks about `archivedAt` or a specific `id`. */
 export async function listTasks(where: Prisma.TaskWhereInput = {}) {
   const scoped = "archivedAt" in where || "id" in where ? where : { archivedAt: null, ...where };
-  const rows = await prisma.task.findMany({ where: scoped, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
+  const rows = await prisma.task.findMany({ where: scoped, include: { _count: { select: { attachments: true } } }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
   return rows.map(taskDTO);
 }
 

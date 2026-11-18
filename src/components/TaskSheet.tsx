@@ -8,6 +8,7 @@ import { PRIORITIES, type BoardColumnDTO } from "@/lib/kanban";
 import type { TaskDTO } from "@/lib/data";
 import { Field, Sheet } from "./Sheet";
 import { columnColor } from "./ui";
+import { TaskAttachments } from "./TaskAttachments";
 import { GoogleMark, NotionMark } from "./ui";
 
 export type ProjectOption = { id: string; name: string; emoji: string | null; color: string };
@@ -224,6 +225,12 @@ function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: 
         )}
         <p className="mt-1 text-[12px] text-ink-3">Tip: drag tasks onto the calendar to schedule them.</p>
       </div>
+
+      {task ? (
+        <TaskAttachments taskId={task.id} />
+      ) : (
+        <p className="text-[12px] text-ink-3">After you save the task you can attach notes, Google Drive files and uploads to it.</p>
+      )}
 
       {task?.fromNotion && (
         <p className="flex items-center gap-1.5 text-[12px] text-ink-2">

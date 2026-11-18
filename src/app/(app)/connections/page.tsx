@@ -14,6 +14,7 @@ import { aiConfigured } from "@/lib/email-ai";
 import { NotificationsCard } from "@/components/NotificationsCard";
 import { lastReminderRun, notifyPrefs } from "@/lib/notify-data";
 import { hasTasksScope } from "@/lib/google-tasks";
+import { ROOT_FOLDER, hasDriveScope } from "@/lib/drive";
 
 const MESSAGES: Record<string, string> = {
   google_config: "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to connect Google calendars.",
@@ -126,6 +127,25 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
                       <span className="text-[13px] text-ink-2">Google Tasks isn't connected for this account yet.</span>
                       <a href={`/api/google/connect?hint=${encodeURIComponent(a.email)}`} className="btn btn-secondary shrink-0">
                         Allow Google Tasks
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+              {a.provider === "google" && (
+                <div className="border-b border-hairline py-2">
+                  {hasDriveScope(a.scopes) ? (
+                    <>
+                      <div className="text-[14px]">Google Drive</div>
+                      <div className="text-[11.5px] text-ink-3">
+                        Task attachments: search and link your files; uploads go to My Drive → {ROOT_FOLDER} → the task’s project folder. Nothing else in your Drive is changed.
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[13px] text-ink-2">Google Drive isn’t connected — needed to link Drive files and upload attachments to tasks.</span>
+                      <a href={`/api/google/connect?hint=${encodeURIComponent(a.email)}`} className="btn btn-secondary shrink-0">
+                        Allow Google Drive
                       </a>
                     </div>
                   )}

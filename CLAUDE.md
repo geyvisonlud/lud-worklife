@@ -58,6 +58,13 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   when dropped in another group; saved by `reorderTask`. List order = time blocks by time, then `position` (`compareTasks`;
   Upcoming by day first). Checking a task plays a short animation (`.task-check*`, `.task-title` strike in globals.css; rows
   carry `data-task`) and saves ~0.5 s later.
+- Task attachments (`TaskAttachment`: kind note | drive | link) in the task editor (`TaskAttachments.tsx`): link a note (`attachNote`),
+  search Google Drive or paste any link (`searchDriveFiles`, `attachDriveFile`, `attachLink` — Drive/Docs links become Drive files),
+  upload a file → Google Drive "Lud Worklife/<project>" (or "Lud Worklife/No project"; folders created on demand, ids in Setting
+  `driveRootFolderId` / `Project.driveFolderId`). Files ≤ 4 MB go through the server (`uploadAttachment`, multipart); bigger ones
+  from the browser straight to a resumable session opened for the app's origin (`startUpload` → PUT → `finishUpload`).
+  Removing only drops the reference. Scopes `drive.file` + `drive.readonly` (`lib/drive.ts` pure + tested, `lib/drive-data.ts` I/O);
+  Connections shows "Allow Google Drive". Cards and list rows show a 📎 count (`TaskDTO.attachments`).
 - Background "sync if stale" calls go through `POST /api/sync/stale` (a route handler), not server actions — server actions
   from one page run one at a time, so a long sync would hold saves behind it. `Event.editedAt` marks edits made here: a sync
   that listed Google before the edit neither overwrites nor deletes that row. `updateEvent` stores Google's PATCH response.

@@ -21,6 +21,9 @@ export const CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   // Two-way: Google Tasks lists are mirrored with the tasks here.
   "https://www.googleapis.com/auth/tasks",
+  // Task attachments: search/link Drive files (read-only) and upload into the app's own "Lud Worklife" folders.
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive.readonly",
 ];
 
 export const googleConfigured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);

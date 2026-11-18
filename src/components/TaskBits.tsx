@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { CalendarClock, Clock, Flag, GripVertical, Plus } from "lucide-react";
+import { CalendarClock, Clock, Flag, GripVertical, Paperclip, Plus } from "lucide-react";
 import { archiveTasks, createTask, reorderTask, toggleTask } from "@/app/actions";
 import { projectColor } from "@/lib/colors";
 import { formatClock, formatDuration, minutesInTz, relativeDay, ymdInTz, daysBetween } from "@/lib/dates";
@@ -102,6 +102,12 @@ export function TaskMeta({ task, showProject = true }: { task: TaskDTO; showProj
       </span>,
     );
   if (task.fromNotion) bits.push(<NotionMark key="n" size={11} />);
+  if (task.attachments)
+    bits.push(
+      <span key="a" className="inline-flex items-center gap-0.5" title={`${task.attachments} attachment${task.attachments === 1 ? "" : "s"}`}>
+        <Paperclip size={11} /> {task.attachments}
+      </span>,
+    );
   if (task.fromGoogleTasks)
     bits.push(
       <span key="g" className="inline-flex items-center" title="Synced with Google Tasks">

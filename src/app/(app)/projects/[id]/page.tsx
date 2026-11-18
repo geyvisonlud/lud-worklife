@@ -15,7 +15,7 @@ import { columnLabel } from "@/lib/kanban";
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const row = await prisma.project.findUnique({ where: { id }, include: { tasks: { orderBy: [{ position: "asc" }, { createdAt: "asc" }] } } });
+  const row = await prisma.project.findUnique({ where: { id }, include: { tasks: { orderBy: [{ position: "asc" }, { createdAt: "asc" }], include: { _count: { select: { attachments: true } } } } } });
   if (!row) notFound();
   const p = projectDTO(row);
   const tasks = row.tasks.filter((t) => !t.archivedAt).map(taskDTO);

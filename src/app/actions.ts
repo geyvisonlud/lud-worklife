@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
@@ -11,6 +11,8 @@ import { appTimeZone, isYmd, ymdInTz, zonedToUtc } from "@/lib/dates";
 import { isColumnOf, isCustomColumn, mergeColumns, isProjectStage, isTaskStatus, newColumnKey, positionAt, type Board } from "@/lib/kanban";
 import { accessToken, mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
 import { googleApi, mapEvent, type GoogleEvent } from "@/lib/google";
+import { driveLinkMime, isHttpUrl, linkTitle, parseDriveLink } from "@/lib/drive";
+import { driveAccount, driveFile, searchDrive, startResumable, uploadSmall } from "@/lib/drive-data";
 import { deleteGoogleTask, pushGoogleTask, syncAllTaskLists, syncTaskLists, unlinkLists } from "@/lib/google-tasks-sync";
 import { findUserByEmail, notionApi } from "@/lib/notion";
 import { syncAllNotion, syncNotionConnection } from "@/lib/notion-sync";
@@ -895,4 +897,123 @@ export async function sendTestNotification(): Promise<ActionResult> {
 export async function setNotifyPrefs(p: Partial<NotifyPrefs>): Promise<ActionResult> {
   await saveNotifyPrefs(parsePrefs(JSON.stringify(p)));
   return done("Saved");
+}
+
+/* -------------------------------------------------------- task attachments */
+
+export type AttachmentDTO = { id: string; kind: "note" | "drive" | "link"; title: string; url: string | null; mimeType: string | null; noteId: string | null; uploaded: boolean };
+
+const attachmentDTO = (a: { id: string; kind: string; title: string; url: string | null; mimeType: string | null; noteId: string | null; uploaded: boolean; note?: { title: string; body: string } | null }): AttachmentDTO => ({
+  id: a.id,
+  kind: (a.kind === "note" || a.kind === "drive" ? a.kind : "link") as AttachmentDTO["kind"],
+  title: a.note ? noteTitle(a.note) : a.title,
+  url: a.kind === "note" && a.noteId ? `/notes?n=${a.noteId}` : a.url,
+  mimeType: a.mimeType,
+  noteId: a.noteId,
+  uploaded: a.uploaded,
+});
+
+/** What's attached to a task, plus whether Google Drive is connected (for the editor). */
+export async function taskAttachments(taskId: string): Promise<{ items: AttachmentDTO[]; drive: boolean }> {
+  const [rows, account] = await Promise.all([
+    prisma.taskAttachment.findMany({ where: { taskId }, include: { note: { select: { title: true, body: true } } }, orderBy: { createdAt: "asc" } }),
+    driveAccount(),
+  ]);
+  return { items: rows.map(attachmentDTO), drive: Boolean(account) };
+}
+
+async function taskExists(taskId: string) {
+  return prisma.task.findUnique({ where: { id: taskId }, select: { id: true, projectId: true } });
+}
+
+export async function attachNote(taskId: string, noteId: string): Promise<ActionResult> {
+  if (!(await taskExists(taskId))) return fail("That task no longer exists.");
+  const note = await prisma.note.findUnique({ where: { id: noteId } });
+  if (!note) return fail("That note no longer exists.");
+  if (await prisma.taskAttachment.findFirst({ where: { taskId, noteId } })) return done("Already linked");
+  await prisma.taskAttachment.create({ data: { taskId, kind: "note", noteId, title: noteTitle(note) } });
+  return done("Note linked");
+}
+
+/** A pasted link: a Google Drive / Docs link becomes a Drive file (with its real name when Drive is connected); others stay links. */
+export async function attachLink(taskId: string, url: string): Promise<ActionResult> {
+  const u = clean(url, 2000);
+  if (!isHttpUrl(u)) return fail("Paste a link that starts with https://");
+  if (!(await taskExists(taskId))) return fail("That task no longer exists.");
+  const fileId = parseDriveLink(u);
+  if (fileId) {
+    const f = (await driveAccount()) ? await driveFile(fileId).catch(() => null) : null;
+    await prisma.taskAttachment.create({
+      data: { taskId, kind: "drive", driveFileId: fileId, title: f?.name ?? driveLinkMime(u).title, url: f?.webViewLink ?? u, mimeType: f?.mimeType ?? driveLinkMime(u).mimeType },
+    });
+    return done(f ? "File linked" : "Linked — connect Google Drive to see the file's name");
+  }
+  await prisma.taskAttachment.create({ data: { taskId, kind: "link", title: linkTitle(u), url: u } });
+  return done("Link added");
+}
+
+export async function attachDriveFile(taskId: string, fileId: string): Promise<ActionResult> {
+  if (!(await taskExists(taskId))) return fail("That task no longer exists.");
+  try {
+    const f = await driveFile(fileId);
+    await prisma.taskAttachment.create({ data: { taskId, kind: "drive", driveFileId: f.id, title: f.name, url: f.webViewLink ?? null, mimeType: f.mimeType } });
+    return done("File linked");
+  } catch (e) {
+    return fail(`Couldn't link the file: ${(e as Error).message}`);
+  }
+}
+
+export async function searchDriveFiles(q: string): Promise<{ ok: true; files: { id: string; name: string; mimeType: string; modifiedTime: string | null }[] } | { ok: false; error: string }> {
+  try {
+    const files = await searchDrive(clean(q, 100));
+    return { ok: true, files: files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, modifiedTime: f.modifiedTime ?? null })) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Upload (small files, through the server) into "Lud Worklife/<project>" in Drive and attach it. */
+export async function uploadAttachment(form: FormData): Promise<ActionResult> {
+  const taskId = String(form.get("taskId") ?? "");
+  const file = form.get("file");
+  if (!(file instanceof File) || !file.size) return fail("Pick a file to upload.");
+  const t = await taskExists(taskId);
+  if (!t) return fail("That task no longer exists.");
+  try {
+    const f = await uploadSmall(t.projectId, file);
+    await prisma.taskAttachment.create({ data: { taskId, kind: "drive", driveFileId: f.id, title: f.name, url: f.webViewLink ?? null, mimeType: f.mimeType, uploaded: true } });
+    return done("Uploaded to Google Drive");
+  } catch (e) {
+    return fail(`Couldn't upload: ${(e as Error).message}`);
+  }
+}
+
+/** Big files: opens a Drive upload the browser sends the file to; `finishUpload` attaches it afterwards. */
+export async function startUpload(taskId: string, name: string, mimeType: string, size: number): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const t = await taskExists(taskId);
+  if (!t) return { ok: false, error: "That task no longer exists." };
+  try {
+    const h = await headers();
+    const origin = h.get("origin") ?? process.env.APP_URL ?? "";
+    return { ok: true, url: await startResumable(t.projectId, clean(name, 200) || "Upload", mimeType, size, origin) };
+  } catch (e) {
+    return { ok: false, error: `Couldn't start the upload: ${(e as Error).message}` };
+  }
+}
+
+export async function finishUpload(taskId: string, fileId: string): Promise<ActionResult> {
+  if (!(await taskExists(taskId))) return fail("That task no longer exists.");
+  try {
+    const f = await driveFile(fileId);
+    await prisma.taskAttachment.create({ data: { taskId, kind: "drive", driveFileId: f.id, title: f.name, url: f.webViewLink ?? null, mimeType: f.mimeType, uploaded: true } });
+    return done("Uploaded to Google Drive");
+  } catch (e) {
+    return fail(`Uploaded, but couldn't attach it: ${(e as Error).message}`);
+  }
+}
+
+/** Removes the reference only — the note or the Drive file stays where it is. */
+export async function removeAttachment(id: string): Promise<ActionResult> {
+  await prisma.taskAttachment.deleteMany({ where: { id } });
+  return done("Removed from the task (the file or note itself is kept)");
 }

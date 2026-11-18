@@ -79,16 +79,16 @@ model Calendar {
 }
 
 model Event {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   calendarId     String
-  calendar       Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  calendar       Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
   externalId     String
   title          String
   description    String?
   location       String?
   start          DateTime
   end            DateTime
-  allDay         Boolean  @default(false)
+  allDay         Boolean   @default(false)
   /// Color set on this event in Google (overrides the calendar color), hex.
   color          String?
   htmlLink       String?
@@ -135,6 +135,8 @@ model Project {
   notionSyncedAt  DateTime?
   /// The stage was changed here, so Notion's status no longer moves it.
   stageOverridden Boolean   @default(false)
+  /// Google Drive folder for this project's uploads ("Lud Worklife/<project>"), created on the first upload.
+  driveFolderId   String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   tasks           Task[]
@@ -142,39 +144,40 @@ model Project {
 }
 
 model Task {
-  id               String    @id @default(cuid())
-  title            String
-  notes            String?
-  projectId        String?
-  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  status           String    @default("todo") // backlog | todo | doing | done
+  id                String           @id @default(cuid())
+  title             String
+  notes             String?
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status            String           @default("todo") // backlog | todo | doing | done
   /// 0 none · 1 low · 2 medium · 3 high
-  priority         Int       @default(0)
-  position         Float     @default(0)
-  dueDate          String? // YYYY-MM-DD
-  durationMin      Int       @default(30)
+  priority          Int              @default(0)
+  position          Float            @default(0)
+  dueDate           String? // YYYY-MM-DD
+  durationMin       Int              @default(30)
   /// Set when the task is dropped on the calendar.
-  scheduledStart   DateTime?
+  scheduledStart    DateTime?
   /// Event created in Google for this time block (see Settings → "Add scheduled tasks to").
-  googleEventId    String?
-  googleCalendarId String?
+  googleEventId     String?
+  googleCalendarId  String?
   /// to_do block this task came from (Notion import).
-  notionBlockId    String?   @unique
+  notionBlockId     String?          @unique
   /// Google Tasks mirror (two-way): the task's id in Google and its list.
-  googleTaskId     String?
-  googleTaskListId String?
-  googleTaskList   GoogleTaskList? @relation(fields: [googleTaskListId], references: [id], onDelete: SetNull)
+  googleTaskId      String?
+  googleTaskListId  String?
+  googleTaskList    GoogleTaskList?  @relation(fields: [googleTaskListId], references: [id], onDelete: SetNull)
   /// Google's `updated` for the version we last saw or wrote — newer ones are pulled in.
   googleTaskUpdated DateTime?
-  completedAt      DateTime?
+  completedAt       DateTime?
   /// Done tasks put away: hidden from boards, lists and the calendar, kept (restorable) in Tasks → Archived.
-  archivedAt       DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  archivedAt        DateTime?
+  attachments       TaskAttachment[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
+  @@unique([googleTaskListId, googleTaskId])
   @@index([scheduledStart])
   @@index([archivedAt])
-  @@unique([googleTaskListId, googleTaskId])
 }
 
 /// ---------------------------------------------------------------------------
@@ -311,7 +314,6 @@ model BibleDay {
   readAt DateTime @default(now())
 }
 
-
 /// A folder of notes (one level; deleting it moves its notes to "No folder").
 model NoteFolder {
   id        String       @id @default(cuid())
@@ -347,6 +349,8 @@ model Note {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
+  taskLinks TaskAttachment[]
+
   @@index([updatedAt])
 }
 
@@ -378,13 +382,13 @@ model ReadItem {
 
 /// A device that gets push notifications (Web Push: the iPhone Home Screen app, desktop Chrome…).
 model PushSubscription {
-  id        String   @id @default(cuid())
-  endpoint  String   @unique
+  id        String    @id @default(cuid())
+  endpoint  String    @unique
   p256dh    String
   auth      String
   /// "iPhone", "Mac · Chrome"… shown on the settings card.
   label     String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   lastUsed  DateTime?
 }
 
@@ -410,4 +414,24 @@ model BoardColumn {
   createdAt DateTime @default(now())
 
   @@unique([board, key])
+}
+
+/// Something referenced from a task: one of the notes here, a Google Drive file (linked or uploaded) or any link.
+model TaskAttachment {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind        String // note | drive | link
+  noteId      String?
+  note        Note?    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  driveFileId String?
+  title       String
+  url         String?
+  mimeType    String?
+  /// Uploaded from here (into the project's Drive folder) rather than linked.
+  uploaded    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([taskId])
+  @@index([noteId])
 }

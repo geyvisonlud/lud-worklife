@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Flag,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Plus,
   Search,
@@ -908,8 +909,13 @@ function TaskCard({
         total={list.total}
         color={p ? projectColor(p.color).hex : "var(--good)"}
       />
-      {(list.total > 0 || t.scheduledStart || t.dueDate) && (
+      {(list.total > 0 || t.scheduledStart || t.dueDate || t.attachments > 0) && (
         <div className="mt-2.5 flex items-center gap-3 text-[12px] text-ink-2">
+          {t.attachments > 0 && (
+            <span className="num inline-flex items-center gap-1" title={`${t.attachments} attachment${t.attachments === 1 ? "" : "s"}`}>
+              <Paperclip size={12} /> {t.attachments}
+            </span>
+          )}
           {list.total > 0 && (
             <span
               className={`num inline-flex items-center gap-1 ${list.done === list.total ? "text-good" : ""}`}
