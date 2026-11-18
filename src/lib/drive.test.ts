@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { driveLinkMime, driveSearchQuery, fileKind, folderQuery, hasDriveScope, isHttpUrl, linkTitle, parseDriveLink, safeFolderName } from "./drive";
+import { canPreviewInline, driveLinkMime, drivePreviewUrl, driveSearchQuery, fileKind, folderQuery, hasDriveScope, isHttpUrl, linkTitle, parseDriveLink, safeFolderName } from "./drive";
 
 describe("drive helpers", () => {
   it("reads file ids from Drive and Docs links", () => {
@@ -40,5 +40,14 @@ describe("drive link types", () => {
     expect(driveLinkMime("https://docs.google.com/spreadsheets/d/1abc/edit").title).toBe("Google Sheet");
     expect(driveLinkMime("https://docs.google.com/document/d/1abc/edit").mimeType).toBe("application/vnd.google-apps.document");
     expect(driveLinkMime("https://drive.google.com/file/d/1abc/view")).toEqual({ mimeType: null, title: "Google Drive file" });
+  });
+});
+
+describe("drive preview", () => {
+  it("uses Drive's viewer, not for folders", () => {
+    expect(drivePreviewUrl("1abc_DEF")).toBe("https://drive.google.com/file/d/1abc_DEF/preview");
+    expect(canPreviewInline("application/vnd.google-apps.folder")).toBe(false);
+    expect(canPreviewInline("application/pdf")).toBe(true);
+    expect(canPreviewInline(null)).toBe(true);
   });
 });

@@ -24,7 +24,7 @@ import { PLAN_DAYS } from "@/lib/bible-plan";
 import { canMoveFolder, normalizeTags, noteEvent, noteTitle, plainText } from "@/lib/notes";
 import { buildEvent } from "@/lib/events";
 import { extractLinks } from "@/lib/read-later";
-import { importLinks, newCaptureToken, readerView, saveToReadLater, type ReaderView } from "@/lib/read-later-data";
+import { fetchMeta, importLinks, newCaptureToken, readerView, saveToReadLater, type ReaderView } from "@/lib/read-later-data";
 import { articleToMarkdown } from "@/lib/reader";
 import { pushToAll, saveNotifyPrefs, vapidKeys } from "@/lib/notify-data";
 import { parsePrefs, type NotifyPrefs } from "@/lib/notify";
@@ -901,15 +901,35 @@ export async function setNotifyPrefs(p: Partial<NotifyPrefs>): Promise<ActionRes
 
 /* -------------------------------------------------------- task attachments */
 
-export type AttachmentDTO = { id: string; kind: "note" | "drive" | "link"; title: string; url: string | null; mimeType: string | null; noteId: string | null; uploaded: boolean };
+export type AttachmentDTO = {
+  id: string;
+  kind: "note" | "drive" | "link";
+  title: string;
+  url: string | null;
+  mimeType: string | null;
+  noteId: string | null;
+  driveFileId: string | null;
+  uploaded: boolean;
+};
 
-const attachmentDTO = (a: { id: string; kind: string; title: string; url: string | null; mimeType: string | null; noteId: string | null; uploaded: boolean; note?: { title: string; body: string } | null }): AttachmentDTO => ({
+const attachmentDTO = (a: {
+  id: string;
+  kind: string;
+  title: string;
+  url: string | null;
+  mimeType: string | null;
+  noteId: string | null;
+  driveFileId: string | null;
+  uploaded: boolean;
+  note?: { title: string; body: string } | null;
+}): AttachmentDTO => ({
   id: a.id,
   kind: (a.kind === "note" || a.kind === "drive" ? a.kind : "link") as AttachmentDTO["kind"],
   title: a.note ? noteTitle(a.note) : a.title,
   url: a.kind === "note" && a.noteId ? `/notes?n=${a.noteId}` : a.url,
   mimeType: a.mimeType,
   noteId: a.noteId,
+  driveFileId: a.driveFileId,
   uploaded: a.uploaded,
 });
 
@@ -1010,6 +1030,19 @@ export async function finishUpload(taskId: string, fileId: string): Promise<Acti
   } catch (e) {
     return fail(`Uploaded, but couldn't attach it: ${(e as Error).message}`);
   }
+}
+
+/** Preview of a linked note (its Markdown). */
+export async function notePreview(noteId: string): Promise<{ title: string; body: string; folder: string | null; updatedAt: string } | null> {
+  const n = await prisma.note.findUnique({ where: { id: noteId }, include: { folder: true } });
+  return n ? { title: noteTitle(n), body: n.body.slice(0, 20_000), folder: n.folder?.name ?? null, updatedAt: n.updatedAt.toISOString() } : null;
+}
+
+/** Preview of a link: the page's title, description and image (sites usually refuse to be shown in a frame). */
+export async function linkPreview(url: string): Promise<{ title: string | null; description: string | null; imageUrl: string | null; siteName: string | null } | null> {
+  if (!isHttpUrl(url)) return null;
+  const m = await fetchMeta(url).catch(() => null);
+  return m ? { title: m.title ?? null, description: m.description ?? null, imageUrl: m.imageUrl ?? null, siteName: m.siteName ?? null } : null;
 }
 
 /** Removes the reference only — the note or the Drive file stays where it is. */

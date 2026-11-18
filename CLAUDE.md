@@ -65,6 +65,9 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   from the browser straight to a resumable session opened for the app's origin (`startUpload` → PUT → `finishUpload`).
   Removing only drops the reference. Scopes `drive.file` + `drive.readonly` (`lib/drive.ts` pure + tested, `lib/drive-data.ts` I/O);
   Connections shows "Allow Google Drive". Cards and list rows show a 📎 count (`TaskDTO.attachments`).
+  Each attachment has a 🔍 preview that expands under it (`AttachmentPreview`): Drive files in Drive's own viewer iframe
+  (`drivePreviewUrl`, uses the browser's Google session; "Bigger" = 70vh), notes as Markdown (`notePreview`), links as title /
+  image / description (`linkPreview` → `fetchMeta`) — each with "Open in …" to see it where it lives.
 - Background "sync if stale" calls go through `POST /api/sync/stale` (a route handler), not server actions — server actions
   from one page run one at a time, so a long sync would hold saves behind it. `Event.editedAt` marks edits made here: a sync
   that listed Google before the edit neither overwrites nor deletes that row. `updateEvent` stores Google's PATCH response.

@@ -77,6 +77,15 @@ export function linkTitle(url: string) {
   }
 }
 
+/**
+ * Address of Drive's own viewer for a file (PDFs, images, Office files, Google Docs/Sheets/Slides…), shown in an
+ * iframe. It loads with the viewer's Google session, so it works for files this browser's Google account can open.
+ */
+export const drivePreviewUrl = (fileId: string) => `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
+
+/** Folders can't be previewed inline (they open in Drive). */
+export const canPreviewInline = (mime: string | null | undefined) => mime !== FOLDER_MIME;
+
 export const isHttpUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim());
 
 /** Type of a Google link from its address (for links added before Drive is connected). */

@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { FileText, HardDrive, Link2, Loader2, Paperclip, Search, Upload, X } from "lucide-react";
+import { ExternalLink, FileText, HardDrive, Link2, Loader2, Maximize2, Minimize2, Paperclip, Search, Upload, X, ZoomIn } from "lucide-react";
 import {
   attachDriveFile,
   attachLink,
   attachNote,
   findNotes,
+  linkPreview,
+  notePreview,
   finishUpload,
   removeAttachment,
   searchDriveFiles,
@@ -17,8 +19,9 @@ import {
   type ActionResult,
   type AttachmentDTO,
 } from "@/app/actions";
-import { DIRECT_UPLOAD_OVER, fileKind, isHttpUrl } from "@/lib/drive";
+import { DIRECT_UPLOAD_OVER, canPreviewInline, drivePreviewUrl, fileKind, isHttpUrl } from "@/lib/drive";
 import type { NoteDTO } from "@/lib/notes-data";
+import { Markdown } from "./Notes";
 import { useReport } from "./TaskSheet";
 
 type Panel = "note" | "drive" | null;
@@ -34,6 +37,8 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
   const [drive, setDrive] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [upload, setUpload] = useState<{ name: string; pct: number } | null>(null);
+  /** The attachment whose preview is open (one at a time). */
+  const [preview, setPreview] = useState<string | null>(null);
   const [, start] = useTransition();
   const file = useRef<HTMLInputElement>(null);
 
@@ -142,7 +147,13 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
       ) : items.length ? (
         <ul className="space-y-1">
           {items.map((a) => (
-            <AttachmentRow key={a.id} a={a} onRemove={() => run(() => removeAttachment(a.id), false)} />
+            <AttachmentRow
+              key={a.id}
+              a={a}
+              open={preview === a.id}
+              onToggle={() => setPreview(preview === a.id ? null : a.id)}
+              onRemove={() => run(() => removeAttachment(a.id), false)}
+            />
           ))}
         </ul>
       ) : (
@@ -168,7 +179,7 @@ function ChipButton({ children, onClick, active, disabled }: { children: React.R
   );
 }
 
-function AttachmentRow({ a, onRemove }: { a: AttachmentDTO; onRemove: () => void }) {
+function AttachmentRow({ a, open, onToggle, onRemove }: { a: AttachmentDTO; open: boolean; onToggle: () => void; onRemove: () => void }) {
   const icon = a.kind === "note" ? <FileText size={14} /> : a.kind === "drive" ? <HardDrive size={14} /> : <Link2 size={14} />;
   const label = a.kind === "note" ? "Note" : a.kind === "drive" ? `${fileKind(a.mimeType, a.title)}${a.uploaded ? " · uploaded" : ""}` : "Link";
   const inner = (
@@ -179,24 +190,147 @@ function AttachmentRow({ a, onRemove }: { a: AttachmentDTO; onRemove: () => void
     </>
   );
   return (
-    <li className="group flex items-center gap-1 rounded-[9px] bg-surface pr-1 text-[13px]">
-      {a.url ? (
-        a.kind === "note" ? (
-          <Link href={a.url} className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 hover:text-accent">
-            {inner}
-          </Link>
-        ) : (
-          <a href={a.url} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 hover:text-accent">
-            {inner}
-          </a>
-        )
-      ) : (
-        <span className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5">{inner}</span>
-      )}
-      <button type="button" onClick={onRemove} className="rounded p-1 text-ink-3 hover:text-bad" aria-label={`Remove ${a.title}`} title="Remove from the task">
-        <X size={13} />
-      </button>
+    <li className={`overflow-hidden rounded-[9px] bg-surface text-[13px] ${open ? "ring-1 ring-hairline-strong" : ""}`}>
+      <div className="group flex items-center gap-0.5 pr-1">
+        <OpenLink a={a} className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 hover:text-accent">
+          {inner}
+        </OpenLink>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className={`rounded p-1 ${open ? "bg-surface-2 text-ink" : "text-ink-3 hover:text-ink"}`}
+          aria-label={`${open ? "Hide" : "Preview"} ${a.title}`}
+          title={open ? "Hide preview" : "Preview"}
+        >
+          <ZoomIn size={14} />
+        </button>
+        <button type="button" onClick={onRemove} className="rounded p-1 text-ink-3 hover:text-bad" aria-label={`Remove ${a.title}`} title="Remove from the task">
+          <X size={13} />
+        </button>
+      </div>
+      {open && <AttachmentPreview a={a} />}
     </li>
+  );
+}
+
+/** Opens the attachment where it lives: the note here, the file in Drive, the link in a new tab. */
+function OpenLink({ a, className, children }: { a: AttachmentDTO; className: string; children: React.ReactNode }) {
+  if (!a.url) return <span className={className}>{children}</span>;
+  if (a.kind === "note")
+    return (
+      <Link href={a.url} className={className}>
+        {children}
+      </Link>
+    );
+  return (
+    <a href={a.url} target="_blank" rel="noreferrer" className={className}>
+      {children}
+    </a>
+  );
+}
+
+/**
+ * The preview under an attachment: Drive's own viewer for files (iframe; uses this browser's Google session), the note's
+ * Markdown, or a link's title / image / description — with "Open in …" to see it where it lives.
+ */
+function AttachmentPreview({ a }: { a: AttachmentDTO }) {
+  const [big, setBig] = useState(false);
+  const [note, setNote] = useState<Awaited<ReturnType<typeof notePreview>> | undefined>(undefined);
+  const [link, setLink] = useState<Awaited<ReturnType<typeof linkPreview>> | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (a.kind === "note" && a.noteId) notePreview(a.noteId).then(setNote).catch(() => setNote(null));
+    if (a.kind === "link" && a.url) linkPreview(a.url).then(setLink).catch(() => setLink(null));
+  }, [a.kind, a.noteId, a.url]);
+
+  const openLabel = a.kind === "note" ? "Open note" : a.kind === "drive" ? "Open in Google Drive" : "Open link";
+  const bar = (
+    <div className="flex items-center gap-2 border-t border-hairline px-2.5 py-1.5">
+      {a.kind === "drive" && (
+        <button type="button" onClick={() => setBig(!big)} className="inline-flex items-center gap-1 text-[12px] text-ink-2 hover:text-ink">
+          {big ? <Minimize2 size={12} /> : <Maximize2 size={12} />} {big ? "Smaller" : "Bigger"}
+        </button>
+      )}
+      <OpenLink a={a} className="ml-auto inline-flex items-center gap-1 rounded-full bg-ink px-2.5 py-[3px] text-[12px] font-medium text-surface hover:opacity-90">
+        {openLabel} <ExternalLink size={11} />
+      </OpenLink>
+    </div>
+  );
+
+  if (a.kind === "drive") {
+    if (!a.driveFileId || !canPreviewInline(a.mimeType))
+      return (
+        <div>
+          <p className="px-3 py-4 text-center text-[12.5px] text-ink-3">{a.driveFileId ? "Folders open in Google Drive." : "No preview for this file."}</p>
+          {bar}
+        </div>
+      );
+    return (
+      <div>
+        <div className="relative border-t border-hairline bg-surface-2" style={{ height: big ? "70vh" : 340 }}>
+          {!loaded && (
+            <div className="absolute inset-0 flex items-center justify-center gap-2 text-[12.5px] text-ink-3">
+              <Loader2 size={14} className="animate-spin" /> Loading preview…
+            </div>
+          )}
+          <iframe
+            src={drivePreviewUrl(a.driveFileId)}
+            title={`Preview of ${a.title}`}
+            className="relative h-full w-full"
+            allow="autoplay"
+            onLoad={() => setLoaded(true)}
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        </div>
+        <p className="px-2.5 pt-1 text-[11px] text-ink-3">Shown by Google Drive — if it asks you to sign in, open it in Drive.</p>
+        {bar}
+      </div>
+    );
+  }
+
+  if (a.kind === "note")
+    return (
+      <div>
+        <div className="max-h-[360px] overflow-y-auto border-t border-hairline px-3.5 py-3 text-[13.5px]">
+          {note === undefined ? (
+            <p className="text-ink-3">Loading…</p>
+          ) : note ? (
+            <>
+              <div className="mb-1 text-[11.5px] text-ink-3">{note.folder ?? "Inbox"}</div>
+              {note.body.trim() ? <Markdown text={note.body} /> : <p className="text-ink-3">This note is empty.</p>}
+            </>
+          ) : (
+            <p className="text-ink-3">This note no longer exists.</p>
+          )}
+        </div>
+        {bar}
+      </div>
+    );
+
+  return (
+    <div>
+      <div className="border-t border-hairline px-3 py-3">
+        {link === undefined ? (
+          <p className="text-[12.5px] text-ink-3">Loading…</p>
+        ) : link ? (
+          <div className="flex gap-3">
+            {link.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={link.imageUrl} alt="" className="h-20 w-28 shrink-0 rounded-[8px] object-cover" referrerPolicy="no-referrer" />
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-[11.5px] text-ink-3">{link.siteName ?? (a.url ? new URL(a.url).hostname : "")}</div>
+              <div className="line-clamp-2 text-[13.5px] font-medium">{link.title ?? a.title}</div>
+              {link.description && <p className="mt-0.5 line-clamp-3 text-[12.5px] text-ink-2">{link.description}</p>}
+            </div>
+          </div>
+        ) : (
+          <p className="text-[12.5px] text-ink-3">No preview for this page.</p>
+        )}
+      </div>
+      {bar}
+    </div>
   );
 }
 
