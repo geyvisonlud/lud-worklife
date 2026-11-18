@@ -1,0 +1,18 @@
+name: Sync calendars and Notion
+# Vercel's free plan runs crons once a day; this calls the sync endpoint every 30 minutes.
+# Set repository secrets APP_URL (https://your-app.vercel.app) and CRON_SECRET.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sync
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ]; then echo "APP_URL secret not set — skipping"; exit 0; fi
+          curl -fsS --max-time 290 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/sync"
