@@ -11,6 +11,10 @@ import { dragState } from "./dragState";
 import { useReport, useWork } from "./TaskSheet";
 import { GoogleMark, NotionMark } from "./ui";
 
+/** Fired on window after a task is added or checked here, so side panels refresh right away. */
+export const TASKS_CHANGED = "lw:tasks-changed";
+const tasksChanged = () => window.dispatchEvent(new Event(TASKS_CHANGED));
+
 export const PRIORITY_COLOR = ["var(--ink-3)", "var(--c1)", "var(--warn)", "var(--bad)"];
 
 /**
@@ -44,7 +48,14 @@ export function TaskCheck({ task, size = 18 }: { task: TaskDTO; size?: number })
           }
         }
         // Let the animation play before the list refreshes (and the task moves to Done).
-        setTimeout(() => start(async () => void (!report(await toggleTask(task.id, next)) && setChecked(!next))), next ? 520 : 0);
+        setTimeout(
+          () =>
+            start(async () => {
+              if (!report(await toggleTask(task.id, next))) setChecked(!next);
+              else tasksChanged();
+            }),
+          next ? 520 : 0,
+        );
       }}
       className="task-check group/check relative inline-flex shrink-0 items-center justify-center rounded-full transition-[transform,background-color,box-shadow] duration-200 active:scale-90"
       data-burst={burst || undefined}
@@ -102,6 +113,7 @@ export function TaskMeta({ task, showProject = true }: { task: TaskDTO; showProj
       </span>,
     );
   if (task.fromNotion) bits.push(<NotionMark key="n" size={11} />);
+  for (const t of task.tags ?? []) bits.push(<TagChip key={`#${t}`} tag={t} />);
   if (task.attachments)
     bits.push(
       <span key="a" className="inline-flex items-center gap-0.5" title={`${task.attachments} attachment${task.attachments === 1 ? "" : "s"}`}>
@@ -180,8 +192,17 @@ export function QuickAdd({ projectId, status, placeholder = "Add a task…", due
     setValue("");
     area.current?.focus();
     start(async () => {
-      const r = await createTask({ title: q.title, projectId: projectId ?? null, status, priority: q.priority, dueDate: q.dueDate ?? (dueToday ? today : null), ...(q.durationMin ? { durationMin: q.durationMin } : {}) });
+      const r = await createTask({
+        title: q.title,
+        projectId: projectId ?? null,
+        status,
+        priority: q.priority,
+        dueDate: q.dueDate ?? (dueToday ? today : null),
+        tags: q.tags,
+        ...(q.durationMin ? { durationMin: q.durationMin } : {}),
+      });
       if (!report(r)) setValue((v) => v || typed);
+      else tasksChanged();
     });
   };
   const area = useRef<HTMLTextAreaElement>(null);
@@ -352,5 +373,21 @@ export function SortableTasks({ tasks, showProject = true, compact = false, grou
         );
       })}
     </div>
+  );
+}
+
+/** A task tag ("#urgent"): small and quiet, colored by its name (same tag → same color everywhere). */
+export function TagChip({ tag, onClick, active }: { tag: string; onClick?: () => void; active?: boolean }) {
+  const hue = [...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+  const style = { "--h": hue } as React.CSSProperties;
+  const cls = `tag-chip inline-flex items-center rounded-[5px] px-1.5 py-[0.5px] text-[11px] font-medium leading-[16px] ${active ? "ring-1 ring-current" : ""}`;
+  return onClick ? (
+    <button type="button" onClick={onClick} className={cls} style={style} aria-pressed={active}>
+      #{tag}
+    </button>
+  ) : (
+    <span className={cls} style={style}>
+      #{tag}
+    </span>
   );
 }

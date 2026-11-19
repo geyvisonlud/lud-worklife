@@ -99,7 +99,14 @@ export function parseQuickAdd(input: string, today: string) {
   take(/\s(today|tod)\b/i, () => (dueDate = today));
   take(/\s(tomorrow|tmr|tom)\b/i, () => (dueDate = addDays(today, 1)));
   take(/\s(\d{4}-\d{2}-\d{2})\b/, (m) => (dueDate = m[1]));
-  return { title: title.replace(/\s+/g, " ").trim(), dueDate, priority, durationMin };
+  // #tags (letters, digits, - and _; any language).
+  const tags: string[] = [];
+  for (let m = title.match(/\s#([\p{L}\p{N}_-]+)/u); m; m = title.match(/\s#([\p{L}\p{N}_-]+)/u)) {
+    const t = m[1].toLowerCase();
+    if (!tags.includes(t)) tags.push(t);
+    title = title.replace(m[0], " ");
+  }
+  return { title: title.replace(/\s+/g, " ").trim(), dueDate, priority, durationMin, tags };
 }
 
 /* ------------------------------------------------------- board toolbar */
@@ -198,4 +205,15 @@ export function dropTask<T extends Sortable>(list: T[], id: string, index: numbe
   const position = before == null && after == null ? moved.position : before == null ? after!.position - 1024 : after == null ? before.position + 1024 : (before.position + after.position) / 2;
   if (!dueDate && index === from) return null;
   return { position, ...(dueDate ? { dueDate } : {}) };
+}
+
+/** Tags typed in a field ("work, #urgent  home") → ["work", "urgent", "home"] (lowercase, no "#", unique, ≤ 12). */
+export function parseTags(input: string | string[]) {
+  const parts = Array.isArray(input) ? input : input.split(/[\s,]+/);
+  const out: string[] = [];
+  for (const p of parts) {
+    const t = p.trim().replace(/^#+/, "").toLowerCase().replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 32);
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.slice(0, 12);
 }

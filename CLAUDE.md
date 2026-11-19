@@ -49,6 +49,16 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   `useWork().taskColumns/projectColumns` — label any status with `columnLabel`. Tasks opens on Board (`?view=list` for the list);
   toolbar filters/sort are client-side (`filterBoardTasks`, `boardStats`, `flagDate` in lib/tasks.ts, tested). The sidebar lists
   projects that aren't done (open task counts, + new project).
+- Tasks → List is Things-style (`TaskListView.tsx`): quick add on top (`#tags` parsed by `parseQuickAdd`), Group Projects/None,
+  Sort Manual/Date/Priority (remembered in localStorage `lw:task-list`), tag filter chips; open tasks only, "Inbox" (no project)
+  section first, then projects (`listSections`/`sortTasks`/`tagCounts` in lib/task-list.ts, tested). Rows drag (HTML5,
+  `dragState`): within/between sections in Manual sort (another project's section moves the task there) or onto the day agenda
+  on the right (`DayAgenda`, `?day=`), which blocks time via `scheduleTask` (mirrored to Google when a calendar is chosen for
+  time blocks). Task tags: `Task.tags` (lowercase, no "#", `parseTags`), `TagChip` (hue from the name, `.tag-chip` in globals.css).
+- Right panel (`RightPanel.tsx`, xl+ only): mini month, the selected day's events + tasks, quick add, all open tasks in an
+  accordion (Overdue / Today / Upcoming / No date; open groups in `lw:right-panel-sections`). Open by default, collapses to a rail
+  (`lw:right-panel`); its width is `--rp` on <html> (Main and the habit dock pad by it). Hidden on /calendar, /notes and
+  Tasks → List. Data from `GET /api/panel?month=` (refetched on navigation, focus, every minute and on `TASKS_CHANGED`).
 - Archive: done tasks can be archived (`Task.archivedAt`; `archiveTasks`, `archiveDoneTasks`, `unarchiveTask`) from a card's ⋯,
   the Done column's ⋯ ("Archive done tasks") or the list's Done card. Archived tasks are hidden everywhere (`listTasks` and
   `calendarTasks` skip them unless asked) but still count in project progress; Tasks → Archived (`?view=archived`) restores or

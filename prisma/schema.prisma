@@ -176,6 +176,8 @@ model Task {
   updatedAt         DateTime         @updatedAt
   /// Row of the Notion "Dashboard Inbox" this task was imported from (never imported twice).
   notionInboxPageId String?          @unique
+  /// Lowercase tags without "#" (local only — Google Tasks has none).
+  tags              String[]         @default([])
 
   @@unique([googleTaskListId, googleTaskId])
   @@index([scheduledStart])
