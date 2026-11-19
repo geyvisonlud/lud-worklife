@@ -174,6 +174,8 @@ model Task {
   attachments       TaskAttachment[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+  /// Row of the Notion "Dashboard Inbox" this task was imported from (never imported twice).
+  notionInboxPageId String?          @unique
 
   @@unique([googleTaskListId, googleTaskId])
   @@index([scheduledStart])
@@ -185,22 +187,26 @@ model Task {
 /// ---------------------------------------------------------------------------
 
 model NotionConnection {
-  id            String    @id @default(cuid())
-  method        String    @default("oauth") // oauth | token | demo
-  workspaceId   String    @unique
-  workspaceName String
-  workspaceIcon String?
+  id              String    @id @default(cuid())
+  method          String    @default("oauth") // oauth | token | demo
+  workspaceId     String    @unique
+  workspaceName   String
+  workspaceIcon   String?
   /// Encrypted access token (OAuth) or internal integration secret.
-  accessToken   String?
+  accessToken     String?
   /// "Me" in that workspace: pages that mention or assign this user are imported.
-  userId        String
-  userName      String?
-  userEmail     String?
-  status        String    @default("OK") // OK | ERROR
-  lastError     String?
+  userId          String
+  userName        String?
+  userEmail       String?
+  status          String    @default("OK") // OK | ERROR
+  lastError       String?
   /// Pages edited after this are looked at on the next sync.
-  lastSyncedAt  DateTime?
-  createdAt     DateTime  @default(now())
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  /// The "Dashboard Inbox" database (tasks/projects added from Notion — e.g. by Claude — are imported from it).
+  inboxDatabaseId String?
+  inboxSyncedAt   DateTime?
+  inboxError      String?
 }
 
 model SyncRun {
