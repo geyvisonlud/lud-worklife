@@ -13,7 +13,7 @@ import { GoogleMark, NotionMark } from "./ui";
 
 export type ProjectOption = { id: string; name: string; emoji: string | null; color: string };
 
-type Defaults = Partial<Pick<TaskDTO, "projectId" | "status" | "dueDate" | "scheduledStart" | "durationMin">>;
+type Defaults = Partial<Pick<TaskDTO, "projectId" | "status" | "dueDate" | "scheduledStart" | "durationMin" | "tags">>;
 
 type Ctx = {
   tz: string;
@@ -121,6 +121,7 @@ function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: 
   const [status, setStatus] = useState(init.status ?? "todo");
   const [priority, setPriority] = useState(task?.priority ?? 0);
   const [dueDate, setDueDate] = useState(init.dueDate ?? "");
+  const [tags, setTags] = useState((task?.tags ?? defaults.tags ?? []).map((t) => `#${t}`).join(" "));
   const [duration, setDuration] = useState(init.durationMin ?? defaultDuration);
   const [schedDay, setSchedDay] = useState(sched ? ymdInTz(sched, tz) : "");
   const [schedTime, setSchedTime] = useState(sched ? (() => { const m = minutesInTz(sched, tz); return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; })() : "");
@@ -134,7 +135,7 @@ function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: 
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    const input = { title, notes, projectId: projectId || null, status, priority, dueDate: dueDate || null, durationMin: duration, scheduledStart: scheduledIso() };
+    const input = { title, notes, projectId: projectId || null, status, priority, dueDate: dueDate || null, durationMin: duration, scheduledStart: scheduledIso(), tags };
     start(async () => {
       const r = task ? await updateTask(task.id, input) : await createTask(input);
       if (report(r)) onDone();
@@ -189,6 +190,10 @@ function TaskForm({ task, defaults, onDone }: { task: TaskDTO | null; defaults: 
               </label>
             ))}
         </div>
+      </Field>
+
+      <Field label="Tags">
+        <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="#work #urgent" className="input !text-[14px]" aria-label="Tags" />
       </Field>
 
       <Field label="Due date">

@@ -49,6 +49,16 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
   `useWork().taskColumns/projectColumns` — label any status with `columnLabel`. Tasks opens on Board (`?view=list` for the list);
   toolbar filters/sort are client-side (`filterBoardTasks`, `boardStats`, `flagDate` in lib/tasks.ts, tested). The sidebar lists
   projects that aren't done (open task counts, + new project).
+- Tasks → List is Things-style (`TaskListView.tsx`): quick add on top (`#tags` parsed by `parseQuickAdd`), Group Projects/None,
+  Sort Manual/Date/Priority (remembered in localStorage `lw:task-list`), tag filter chips; open tasks only, "Inbox" (no project)
+  section first, then projects (`listSections`/`sortTasks`/`tagCounts` in lib/task-list.ts, tested). Rows drag (HTML5,
+  `dragState`): within/between sections in Manual sort (another project's section moves the task there) or onto the day agenda
+  on the right (`DayAgenda`, `?day=`), which blocks time via `scheduleTask` (mirrored to Google when a calendar is chosen for
+  time blocks). Task tags: `Task.tags` (lowercase, no "#", `parseTags`), `TagChip` (hue from the name, `.tag-chip` in globals.css).
+- Right panel (`RightPanel.tsx`, xl+ only): mini month, the selected day's events + tasks, quick add, all open tasks in an
+  accordion (Overdue / Today / Upcoming / No date; open groups in `lw:right-panel-sections`). Open by default, collapses to a rail
+  (`lw:right-panel`); its width is `--rp` on <html> (Main and the habit dock pad by it). Hidden on /calendar, /notes and
+  Tasks → List. Data from `GET /api/panel?month=` (refetched on navigation, focus, every minute and on `TASKS_CHANGED`).
 - Archive: done tasks can be archived (`Task.archivedAt`; `archiveTasks`, `archiveDoneTasks`, `unarchiveTask`) from a card's ⋯,
   the Done column's ⋯ ("Archive done tasks") or the list's Done card. Archived tasks are hidden everywhere (`listTasks` and
   `calendarTasks` skip them unless asked) but still count in project progress; Tasks → Archived (`?view=archived`) restores or
@@ -75,6 +85,13 @@ Look at UI changes in the browser (light **and** dark mode, ~390px width). Test 
 - Task time blocks mirrored to Google carry `extendedProperties.private.ludTaskId`; `mapEvent` skips them so they aren't shown twice.
 - Notion: read-only. `importPage` decides by `assignedVia` (People property) or `@mention`; `stageOverridden` stops Notion's
   status from moving a card the user moved.
+- Notion "Dashboard Inbox" (for adding tasks/projects from Notion, e.g. by Claude): a database with that exact title shared with the
+  integration (`findInboxDatabase`; id in `NotionConnection.inboxDatabaseId`). `syncInbox` (notion-sync.ts) imports each row once —
+  a task (`Task.notionInboxPageId`) or a project (`Project.notionPageId`, `notionReason: "inbox"`); rows without a name are skipped
+  until they get one; later edits in Notion aren't pulled. Properties parsed by `parseInboxRow` (lib/notion-inbox.ts, tested; EN/PT
+  names): Name (title), Type (select Task/Project), Project (text/select — matched by name, created when missing), Due (date),
+  Priority (select High/Medium/Low), Notes (text). Runs before the regular Notion import (whose loop skips inbox rows), every 5 min
+  from `/api/cron/notify`, and on opening Today/Tasks/Projects via `/api/sync/stale?what=tasks` (2-min staleness).
 - Tokens (Google, Notion) are encrypted with `lib/crypto.ts`.
 - Email → possible tasks: `lib/email.ts` (parse, `screen` drops marketing/automated mail, keyword fallback), `lib/email-ai.ts`
   (Claude `claude-opus-5-5`, structured output, emails passed as data in `<email>` tags), `lib/email-sync.ts` (Gmail, read-only).

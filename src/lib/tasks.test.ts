@@ -46,9 +46,9 @@ describe("task buckets", () => {
 
 describe("quick add", () => {
   it("parses dates, priority and duration", () => {
-    expect(parseQuickAdd("Write report tomorrow !high 45m", TODAY)).toEqual({ title: "Write report", dueDate: "2026-11-06", priority: 3, durationMin: 45 });
-    expect(parseQuickAdd("Call bank today 1.5h", TODAY)).toEqual({ title: "Call bank", dueDate: TODAY, priority: 0, durationMin: 90 });
-    expect(parseQuickAdd("Plan 2026-12-01 !low", TODAY)).toEqual({ title: "Plan", dueDate: "2026-12-01", priority: 1, durationMin: null });
+    expect(parseQuickAdd("Write report tomorrow !high 45m", TODAY)).toEqual({ title: "Write report", dueDate: "2026-11-06", priority: 3, durationMin: 45, tags: [] });
+    expect(parseQuickAdd("Call bank today 1.5h", TODAY)).toEqual({ title: "Call bank", dueDate: TODAY, priority: 0, durationMin: 90, tags: [] });
+    expect(parseQuickAdd("Plan 2026-12-01 !low", TODAY)).toEqual({ title: "Plan", dueDate: "2026-12-01", priority: 1, durationMin: null, tags: [] });
     expect(parseQuickAdd("Just a task", TODAY).title).toBe("Just a task");
   });
 });
@@ -120,5 +120,21 @@ describe("drag to reorder", () => {
     const opts = { key: (t: (typeof l)[number]) => t.group, dateOf: (k: string) => (k === "today" ? "2026-11-05" : null) };
     expect(dropTask(l, "o", 2, opts)).toEqual({ position: 1536, dueDate: "2026-11-05" });
     expect(dropTask(l, "y", 0, opts)).toBeNull(); // today → overdue isn't allowed
+  });
+});
+
+import { parseTags } from "./tasks";
+
+describe("task tags", () => {
+  it("takes #tags out of quick add", () => {
+    const q = parseQuickAdd("Call João #Church #urgent today #church", TODAY);
+    expect(q.title).toBe("Call João");
+    expect(q.tags).toEqual(["church", "urgent"]);
+    expect(q.dueDate).toBe(TODAY);
+    expect(parseQuickAdd("Issue #42 fix", TODAY).tags).toEqual(["42"]);
+  });
+  it("parses a tags field", () => {
+    expect(parseTags("work, #Urgent  home work")).toEqual(["work", "urgent", "home"]);
+    expect(parseTags(["Ação!", " "])).toEqual(["ação"]);
   });
 });

@@ -137,7 +137,7 @@ export function HabitDock({ habits }: { habits: HabitSummary[] }) {
   const done = list.filter((h) => h.doneToday).length;
 
   return (
-    <div className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-3 z-40 md:bottom-6 md:right-6 print:hidden">
+    <div className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-3 z-40 md:bottom-6 md:right-6 xl:right-[calc(var(--rp,0px)+1.5rem)] print:hidden">
       {open ? (
         <div className="card animate-in w-[min(300px,calc(100vw-24px))] !px-3.5 !py-2.5 shadow-[var(--shadow-lift)]" style={{ background: "var(--card-bg-strong)" }} role="dialog" aria-label="Today's habits">
           <div className="mb-1 flex items-center gap-2">

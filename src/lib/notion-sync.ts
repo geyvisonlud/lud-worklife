@@ -16,8 +16,10 @@ import {
   stageFromStatus,
   summary,
   todosForUser,
+  notionApi,
   type NotionPage,
 } from "./notion";
+import { INBOX_TITLE, parseInboxRow, sameProjectName } from "./notion-inbox";
 
 /** First sync looks this far back; later syncs only at pages edited since the previous one. */
 export const NOTION_LOOKBACK_DAYS = Number(process.env.NOTION_LOOKBACK_DAYS || 90);
@@ -115,10 +117,17 @@ export async function syncNotionConnection(conn: NotionConnection): Promise<Impo
   // Overlap a little so edits made during the previous sync aren't missed.
   const since = conn.lastSyncedAt ? new Date(conn.lastSyncedAt.getTime() - 10 * 60_000) : new Date(Date.now() - NOTION_LOOKBACK_DAYS * 86400_000);
   const result: ImportResult = { checked: 0, imported: 0, updated: 0, tasks: 0 };
+  // The Dashboard Inbox first, so its rows are known (and skipped) below.
+  const inbox = await syncInbox(conn).catch(() => null);
+  if (inbox) result.imported += inbox.imported;
+  const fresh = await prisma.notionConnection.findUnique({ where: { id: conn.id }, select: { inboxDatabaseId: true } });
+  conn = { ...conn, inboxDatabaseId: fresh?.inboxDatabaseId ?? null };
   try {
     const pages = await recentPages(token, since);
     const parents = new Map<string, string | null>();
     for (const page of pages) {
+      // Rows of the Dashboard Inbox are imported by syncInbox, not as pages that involve me.
+      if (conn.inboxDatabaseId && sameIdLoose(page.parent?.database_id, conn.inboxDatabaseId)) continue;
       result.checked++;
       const r = await importPage(conn, token, page, parents);
       if (r === "skip") continue;
@@ -156,4 +165,151 @@ export async function syncAllNotion() {
     data: { status: errors.length ? "ERROR" : "SUCCESS", finishedAt: new Date(), imported: total.imported, message: errors.length ? errors.join("; ") : msg },
   });
   return { connections: conns.length, ...total, errors };
+}
+
+/* ------------------------------------------------------- Dashboard Inbox */
+
+const sameIdLoose = (a: string | undefined | null, b: string | undefined | null) =>
+  Boolean(a && b && a.replace(/-/g, "").toLowerCase() === b.replace(/-/g, "").toLowerCase());
+
+type NotionDatabase = { id: string; title?: { plain_text: string }[]; archived?: boolean; in_trash?: boolean };
+
+/** The "Dashboard Inbox" database shared with the integration (exact title, any case), or null. */
+export async function findInboxDatabase(token: string) {
+  const r = await notionApi<{ results: NotionDatabase[] }>(token, "/search", {
+    method: "POST",
+    body: { query: INBOX_TITLE, filter: { property: "object", value: "database" }, page_size: 20 },
+  });
+  const title = (d: NotionDatabase) => (d.title ?? []).map((t) => t.plain_text).join("").trim().toLowerCase();
+  return r.results.find((d) => !d.archived && !d.in_trash && title(d) === INBOX_TITLE.toLowerCase())?.id ?? null;
+}
+
+export type InboxResult = { found: boolean; checked: number; imported: number };
+
+/**
+ * Imports new rows of the Dashboard Inbox as tasks or projects — each row once (tasks remember the row in
+ * `notionInboxPageId`, projects in `notionPageId`). Later edits to an imported row are not pulled: the item lives here.
+ * Only rows edited since the last run are looked at (with a little overlap).
+ */
+export async function syncInbox(conn: NotionConnection): Promise<InboxResult> {
+  if (conn.method === "demo" || !conn.accessToken) return { found: false, checked: 0, imported: 0 };
+  const token = decrypt(conn.accessToken);
+  const startedAt = new Date();
+  try {
+    let dbId = conn.inboxDatabaseId;
+    let since = conn.inboxSyncedAt ? new Date(conn.inboxSyncedAt.getTime() - 10 * 60_000) : null;
+    const query = async (cursor?: string) =>
+      notionApi<{ results: NotionPage[]; has_more: boolean; next_cursor: string | null }>(token, `/databases/${dbId}/query`, {
+        method: "POST",
+        body: {
+          page_size: 100,
+          sorts: [{ timestamp: "created_time", direction: "ascending" }],
+          ...(since ? { filter: { timestamp: "last_edited_time", last_edited_time: { on_or_after: since.toISOString() } } } : {}),
+          ...(cursor ? { start_cursor: cursor } : {}),
+        },
+      });
+    let first: Awaited<ReturnType<typeof query>> | null = null;
+    if (dbId) first = await query().catch(() => null); // gone or no longer shared → look for it again
+    if (!first) {
+      dbId = await findInboxDatabase(token);
+      if (!dbId) {
+        await prisma.notionConnection.update({
+          where: { id: conn.id },
+          data: { inboxDatabaseId: null, inboxSyncedAt: startedAt, inboxError: `No database named “${INBOX_TITLE}” is shared with the integration.` },
+        });
+        return { found: false, checked: 0, imported: 0 };
+      }
+      if (dbId !== conn.inboxDatabaseId) since = null; // a new inbox: read all of it
+      first = await query();
+    }
+
+    const rows: NotionPage[] = [...first.results];
+    let page = first;
+    for (let i = 0; page.has_more && page.next_cursor && i < 9; i++) {
+      page = await query(page.next_cursor);
+      rows.push(...page.results);
+    }
+
+    let imported = 0;
+    const projects = await prisma.project.findMany({ where: { archived: false }, select: { id: true, name: true } });
+    for (const row of rows) {
+      if (row.archived || row.in_trash) continue;
+      const item = parseInboxRow(row);
+      if (!item) continue;
+      if (item.kind === "project") {
+        if (await prisma.project.findUnique({ where: { notionPageId: row.id } })) continue;
+        const top = await prisma.project.findFirst({ where: { stage: "planned" }, orderBy: { position: "asc" } });
+        const p = await prisma.project
+          .create({
+            data: {
+              name: item.title,
+              description: item.notes,
+              dueDate: item.dueDate,
+              emoji: row.icon?.type === "emoji" ? (row.icon.emoji ?? null) : null,
+              color: colorFor(item.title),
+              stage: "planned",
+              position: (top?.position ?? 1024) - 1024,
+              source: "notion",
+              notionPageId: row.id,
+              notionUrl: row.url,
+              notionParent: INBOX_TITLE,
+              notionWorkspace: conn.workspaceName,
+              notionReason: "inbox",
+              notionEditedAt: new Date(row.last_edited_time),
+              notionSyncedAt: new Date(),
+              stageOverridden: true,
+            },
+          })
+          .catch(() => null); // imported by a run at the same moment
+        if (p) {
+          projects.push({ id: p.id, name: p.name });
+          imported++;
+        }
+        continue;
+      }
+      if (await prisma.task.findUnique({ where: { notionInboxPageId: row.id } })) continue;
+      let projectId: string | null = null;
+      if (item.project) {
+        const match = projects.find((p) => sameProjectName(p.name, item.project!));
+        if (match) projectId = match.id;
+        else {
+          const top = await prisma.project.findFirst({ where: { stage: "planned" }, orderBy: { position: "asc" } });
+          const p = await prisma.project.create({ data: { name: item.project, color: colorFor(item.project), stage: "planned", position: (top?.position ?? 1024) - 1024 } });
+          projects.push({ id: p.id, name: p.name });
+          projectId = p.id;
+        }
+      }
+      const top = await prisma.task.findFirst({ where: { status: "todo", projectId }, orderBy: { position: "asc" } });
+      const t = await prisma.task
+        .create({
+          data: {
+            title: item.title,
+            notes: item.notes,
+            dueDate: item.dueDate,
+            priority: item.priority,
+            projectId,
+            status: "todo",
+            position: (top?.position ?? 1024) - 1024,
+            notionInboxPageId: row.id,
+          },
+        })
+        .catch(() => null); // imported by a run at the same moment
+      if (t) imported++;
+    }
+    await prisma.notionConnection.update({ where: { id: conn.id }, data: { inboxDatabaseId: dbId, inboxSyncedAt: startedAt, inboxError: null } });
+    return { found: true, checked: rows.length, imported };
+  } catch (e) {
+    await prisma.notionConnection.update({ where: { id: conn.id }, data: { inboxError: String((e as Error).message).slice(0, 300) } }).catch(() => {});
+    throw e;
+  }
+}
+
+/** Every real connection's inbox, when last checked more than `staleMs` ago (0 = always). */
+export async function syncAllInboxes(staleMs = 0) {
+  const conns = await prisma.notionConnection.findMany({
+    where: { method: { not: "demo" }, ...(staleMs ? { OR: [{ inboxSyncedAt: null }, { inboxSyncedAt: { lt: new Date(Date.now() - staleMs) } }] } : {}) },
+  });
+  let imported = 0;
+  for (const c of conns) imported += (await syncInbox(c).catch(() => null))?.imported ?? 0;
+  return { connections: conns.length, imported };
 }

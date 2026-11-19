@@ -4,6 +4,7 @@ import { RegisterServiceWorker } from "@/components/NotificationsCard";
 import { Sidebar, TabBar } from "@/components/Nav";
 import { WorkProvider } from "@/components/TaskSheet";
 import { Main } from "@/components/Main";
+import { RightPanelProvider } from "@/components/RightPanel";
 import { HabitDock } from "@/components/Habits";
 import { authEnabled } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -57,8 +58,10 @@ async function AppShell({ children }: { children: React.ReactNode }) {
     <WorkProvider tz={appTimeZone()} today={day} projects={projects} defaultDuration={settings.defaultDuration} googleTarget={target?.name ?? null} taskColumns={taskColumns} projectColumns={projectColumns}>
       <Sidebar badges={{ "/tasks": overdue }} authEnabled={authEnabled()} sync={sync} projects={sideProjects} />
       <TabBar badges={{ "/tasks": overdue }} />
-      <Main>{children}</Main>
-      <HabitDock habits={habits} />
+      <RightPanelProvider>
+        <Main>{children}</Main>
+        <HabitDock habits={habits} />
+      </RightPanelProvider>
       <RegisterServiceWorker />
     </WorkProvider>
   );

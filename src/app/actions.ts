@@ -8,6 +8,7 @@ import { SESSION_COOKIE, SESSION_MAX_AGE, allowedEmails, createSessionToken, pas
 import { encrypt } from "@/lib/crypto";
 import { isHex, isProjectColor } from "@/lib/colors";
 import { appTimeZone, isYmd, ymdInTz, zonedToUtc } from "@/lib/dates";
+import { parseTags } from "@/lib/tasks";
 import { isColumnOf, isCustomColumn, mergeColumns, isProjectStage, isTaskStatus, newColumnKey, positionAt, type Board } from "@/lib/kanban";
 import { accessToken, mirrorTask, removeTaskEvent, syncAccount, syncAllCalendars } from "@/lib/google-sync";
 import { googleApi, mapEvent, type GoogleEvent } from "@/lib/google";
@@ -66,6 +67,8 @@ export type TaskInput = {
   durationMin?: number;
   /** ISO instant, or null to unschedule. */
   scheduledStart?: string | null;
+  /** Tags (any form: "#a b, c" or a list) — stored lowercase without "#". */
+  tags?: string[] | string;
 };
 
 /** Custom column keys of a board, fetched only when `key` is one (built-in keys need no lookup). */
@@ -84,6 +87,7 @@ function taskData(input: TaskInput, custom: string[] = []) {
     data.completedAt = input.status === "done" ? new Date() : null;
     if (input.status !== "done") data.archivedAt = null; // reopening brings it back from the archive
   }
+  if (input.tags !== undefined) data.tags = parseTags(input.tags);
   if (input.priority !== undefined) data.priority = Math.max(0, Math.min(3, Math.round(Number(input.priority) || 0)));
   if (input.dueDate !== undefined) data.dueDate = isYmd(input.dueDate) ? input.dueDate : null;
   if (input.durationMin !== undefined) data.durationMin = Math.max(5, Math.min(12 * 60, Math.round(Number(input.durationMin) || 30)));

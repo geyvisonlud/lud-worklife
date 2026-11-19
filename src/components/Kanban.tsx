@@ -48,7 +48,7 @@ import {
 } from "@/lib/tasks";
 import type { ProjectDTO, TaskDTO } from "@/lib/data";
 import { ProjectSheet } from "./ProjectSheet";
-import { QuickAdd, TaskCheck } from "./TaskBits";
+import { QuickAdd, TagChip, TaskCheck } from "./TaskBits";
 import { useReport, useWork } from "./TaskSheet";
 import { NotionMark, columnColor, notionReasonLabel } from "./ui";
 
@@ -812,8 +812,11 @@ function TaskCard({
       data-task
       className="relative rounded-[12px] border border-hairline bg-surface p-3 shadow-[var(--shadow)] transition-shadow hover:shadow-[var(--shadow-lift)]"
     >
-      {(pr || t.fromGoogleTasks || t.fromNotion) && (
-        <div className="mb-1.5 flex items-center gap-1.5 pr-6">
+      {(pr || t.fromGoogleTasks || t.fromNotion || t.tags.length > 0) && (
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5 pr-6">
+          {t.tags.slice(0, 3).map((tag) => (
+            <TagChip key={tag} tag={tag} />
+          ))}
           {pr && (
             <span
               className={`rounded-[6px] px-1.5 py-[1px] text-[11.5px] font-medium ${pr.cls}`}
