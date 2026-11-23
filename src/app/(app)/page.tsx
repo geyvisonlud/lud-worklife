@@ -1,4 +1,4 @@
-import { ProjectCards, TaskTable } from "@/components/TodayWork";
+import { HomeHeader, MyTasks, ProjectProgress, RecentActivity, StatStrip, UpcomingDeadlines, type DeadlineItem } from "@/components/Home";
 import { NotesBox } from "@/components/Notes";
 import { listNotes } from "@/lib/notes-data";
 import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
@@ -12,12 +12,13 @@ import { BibleTodayBox } from "@/components/Bible";
 import { STOIC_QUOTES, VERSES } from "@/lib/daily-content";
 import { stoicOfDay, verseOfDay } from "@/lib/daily";
 import { gmailLink, hasGmailScope } from "@/lib/email";
-import { QuickAdd, SortableTasks } from "@/components/TaskBits";
 import { Card, NotionMark, ProjectGlyph, notionReasonLabel } from "@/components/ui";
 import { projectColor } from "@/lib/colors";
 import { prisma } from "@/lib/db";
-import { addDays, appTimeZone, dayBounds, formatDay, formatDuration, greeting, minutesInTz, relativeTime, wallMinutes } from "@/lib/dates";
-import { bibleState, eventsBetween, habitsToday, listProjects, listTasks, today } from "@/lib/data";
+import { addDays, appTimeZone, dayBounds, formatDay, greeting, minutesInTz, relativeTime, wallMinutes, ymdInTz } from "@/lib/dates";
+import { bibleState, eventsBetween, habitsToday, listProjects, listTasks, taskDTO, today } from "@/lib/data";
+import { deadlineGroups, homeStats, recentActivity } from "@/lib/home";
+import { noteTitle } from "@/lib/notes";
 import { ownerFirstName } from "@/lib/session";
 import { daySummary, groupTasks } from "@/lib/tasks";
 
@@ -25,7 +26,8 @@ export default async function TodayPage() {
   const tz = appTimeZone();
   const day = today();
   // Everything in one round of parallel queries (each sequential await was a trip to the database).
-  const [events, tasks, projects, name, calendars, notion, suggestions, mailAccounts, habits, bible, recentNotes, saved] = await Promise.all([
+  const weekAgo = new Date(Date.now() - 7 * 86400_000);
+  const [events, tasks, projects, name, calendars, notion, suggestions, mailAccounts, habits, bible, recentNotes, saved, doneWeek, recentTasks, recentProjects, editedNotes] = await Promise.all([
     eventsBetween(day, addDays(day, 1)),
     listTasks({ OR: [{ status: { not: "done" } }, { completedAt: { gte: new Date(Date.now() - 86400_000) } }] }),
     listProjects(),
@@ -38,6 +40,12 @@ export default async function TodayPage() {
     bibleState(),
     listNotes({ take: 6 }),
     prisma.savedQuote.findMany({ select: { kind: true, key: true } }),
+    // Completed in the last 7 days (archived too) — the "Completed" figure and tab.
+    prisma.task.findMany({ where: { status: "done", completedAt: { gte: weekAgo } }, orderBy: { completedAt: "desc" }, take: 50 }),
+    // Recent activity: tasks added or finished, projects created, notes written.
+    prisma.task.findMany({ where: { OR: [{ createdAt: { gte: weekAgo } }, { completedAt: { gte: weekAgo } }] }, orderBy: { updatedAt: "desc" }, take: 12 }),
+    prisma.project.findMany({ where: { createdAt: { gte: weekAgo } }, orderBy: { createdAt: "desc" }, take: 6, select: { id: true, name: true, createdAt: true, source: true } }),
+    prisma.note.findMany({ where: { updatedAt: { gte: weekAgo } }, orderBy: { updatedAt: "desc" }, take: 6, select: { id: true, title: true, body: true, createdAt: true, updatedAt: true } }),
   ]);
   const stoic = stoicOfDay(day);
   const verse = verseOfDay(day);
@@ -90,43 +98,62 @@ export default async function TodayPage() {
   const habitsDone = habits.filter((h) => h.doneToday).length;
   const bibleRead = bible.started && bible.current ? bible.done.has(bible.current) : false;
 
+  // Workspace-home figures and lists (lib/home.ts).
+  const dayOfInstant = (iso: string) => ymdInTz(new Date(iso), tz);
+  // Done in the last 7 days counting today — the same window as the "Completed" figure.
+  const doneDTO = doneWeek.map(taskDTO).filter((t) => t.completedAt && dayOfInstant(t.completedAt) >= addDays(day, -6));
+  const stats = homeStats(projects, [...tasks.filter((t) => t.status !== "done"), ...doneDTO], day, dayOfInstant);
+  const colorOfTask = (t: { projectId: string | null }) => projectColor(projects.find((p) => p.id === t.projectId)?.color ?? "graphite").hex;
+  const deadlines = deadlineGroups<DeadlineItem>(
+    [
+      ...tasks.filter((t) => t.status !== "done").map((t) => ({ id: t.id, title: t.title, dueDate: t.dueDate, color: colorOfTask(t), task: t, kind: "task" as const })),
+      ...projects.filter((p) => p.stage !== "done").map((p) => ({ id: p.id, title: p.name, dueDate: p.dueDate, color: projectColor(p.color).hex, href: `/projects/${p.id}`, kind: "project" as const })),
+    ],
+    day,
+  );
+  const activity = recentActivity({
+    tasks: recentTasks.map((t) => ({ id: t.id, title: t.title, createdAt: t.createdAt.toISOString(), completedAt: t.completedAt?.toISOString() ?? null, fromNotion: Boolean(t.notionBlockId || t.notionInboxPageId) })),
+    projects: recentProjects.map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt.toISOString(), source: p.source })),
+    notes: editedNotes.map((n) => ({ id: n.id, title: noteTitle(n), createdAt: n.createdAt.toISOString(), updatedAt: n.updatedAt.toISOString() })),
+  });
+  const subtitle = `${formatDay(day, { long: true })} · ${
+    sum.events ? `${sum.events} event${sum.events === 1 ? "" : "s"}` : "No events"
+  }, ${stats.dueToday} task${stats.dueToday === 1 ? "" : "s"} due today${stats.overdue ? ` and ${stats.overdue} overdue` : ""}.`;
+
   return (
     <div className="space-y-5">
-      <DayOverview
-        greeting={`${greeting(new Date(), tz)}${name ? `, ${name}` : ""}`}
-        dateLabel={formatDay(day, { long: true, year: true })}
-        tz={tz}
-        initialNow={minutesInTz(new Date(), tz)}
-        items={ribbon}
-        allDay={todaysEvents.filter((e) => e.allDay).map((e) => ({ title: e.title, color: e.color }))}
-        figures={[
-          { label: "Meetings", value: sum.meetingMin ? formatDuration(sum.meetingMin) : "None", hint: `${sum.events} event${sum.events === 1 ? "" : "s"}`, href: "/calendar?view=day" },
-          { label: "Focus", value: sum.focusMin ? formatDuration(sum.focusMin) : "None", tone: sum.focusMin ? "good" : undefined, hint: "Tasks on the calendar", href: "/calendar?view=day" },
-          { label: "Due today", value: String(sum.dueToday), hint: sum.inbox ? `${sum.inbox} in the inbox` : "Inbox zero", href: "/tasks" },
-          { label: "Overdue", value: String(sum.overdue), tone: sum.overdue ? "bad" : undefined, hint: sum.overdue ? "Reschedule or finish" : "All caught up", href: "/tasks" },
-          { label: "Habits", value: habits.length ? `${habitsDone}/${habits.length}` : "—", tone: habits.length && habitsDone === habits.length ? "good" : undefined, hint: habits.length ? (habitsDone === habits.length ? "All done" : "Still to do") : "None yet", href: "/habits" },
-          {
-            label: "Bible",
-            value: bible.started && bible.current ? `Day ${bible.current}` : "—",
-            tone: bibleRead ? "good" : undefined,
-            hint: bible.started ? (bibleRead ? "Read today" : bible.progress.behind ? `${bible.progress.behind} to catch up` : "Not read yet") : "Plan not started",
-            href: "/bible",
-          },
-        ]}
-      />
-
-      <HabitStrip habits={habits} />
+      <HomeHeader greeting={`${greeting(new Date(), tz)}${name ? `, ${name}` : ""}`} subtitle={subtitle} />
+      <StatStrip s={stats} />
       <GoogleTasksAutoSync />
 
-      <ProjectCards projects={projects} tasks={tasks} />
-      <TaskTable tasks={tasks} projects={projects} />
+      <div className="flex flex-col gap-5 xl:grid xl:grid-cols-12 xl:items-start">
+        <div className="flex min-w-0 flex-col gap-5 xl:col-span-8">
+          <DayOverview
+            compact
+            greeting=""
+            dateLabel={formatDay(day, { long: true, year: true })}
+            tz={tz}
+            initialNow={minutesInTz(new Date(), tz)}
+            items={ribbon}
+            allDay={todaysEvents.filter((e) => e.allDay).map((e) => ({ title: e.title, color: e.color }))}
+            figures={[]}
+          />
+          <MyTasks today={g.today} upcoming={g.upcoming} overdue={g.overdue} completed={doneDTO} />
+          <ProjectProgress projects={projects} today={day} />
+          <HabitStrip habits={habits} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-5 xl:col-span-4">
+          <UpcomingDeadlines groups={deadlines} />
+          <Card title="Agenda" href="/calendar">
+            <Agenda events={todaysEvents.filter((e) => !e.allDay)} tasks={blocks} calendars={calNames} />
+          </Card>
+          <RecentActivity items={activity} />
+        </div>
+      </div>
 
       {/* Two independent columns on desktop (no gaps under the shorter card); on phones: agenda, to do, email, Bible. */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-12 lg:items-start">
         <div className="contents lg:col-span-7 lg:flex lg:flex-col lg:gap-5">
-        <Card title="Agenda" href="/calendar" className="order-1 lg:order-none">
-          <Agenda events={todaysEvents.filter((e) => !e.allDay)} tasks={blocks} calendars={calNames} />
-        </Card>
           <div className="order-3 lg:order-none">
           <EmailSuggestions
             items={suggestions.map((s) => ({
@@ -150,19 +177,6 @@ export default async function TodayPage() {
           </div>
         </div>
         <div className="contents lg:col-span-5 lg:flex lg:flex-col lg:gap-5">
-        <Card title="To do today" href="/tasks" className="order-2 lg:order-none">
-          <QuickAdd placeholder="Add a task for today…" dueToday />
-          <div className="mt-2">
-            <SortableTasks tasks={focusList} group="focus" />
-            {!focusList.length && <p className="py-6 text-center text-[14px] text-ink-2">Nothing due today. Pick something from the inbox?</p>}
-          </div>
-          {g.inbox.length > 0 && (
-            <>
-              <div className="section-label mb-1 mt-4">Inbox · {g.inbox.length}</div>
-              <SortableTasks tasks={g.inbox.slice(0, 4)} compact />
-            </>
-          )}
-        </Card>
           <div className="order-4 lg:order-none">
           {bible.started && bible.reading ? (
             <BibleTodayBox

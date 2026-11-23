@@ -12,7 +12,7 @@ import { columnColor } from "./ui";
 
 const EMOJIS = ["🚀", "📊", "🎯", "💡", "🛠️", "📝", "🌐", "🎄", "📚", "💳", "🏠", "✈️", "🎨", "🧪", "📣", "🤝"];
 
-export function ProjectButton({ project, compact }: { project?: ProjectDTO; compact?: boolean }) {
+export function ProjectButton({ project, compact, secondary }: { project?: ProjectDTO; compact?: boolean; secondary?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -25,7 +25,7 @@ export function ProjectButton({ project, compact }: { project?: ProjectDTO; comp
           <Pencil size={14} /> Edit
         </button>
       ) : (
-        <button className="btn btn-primary" onClick={() => setOpen(true)}>
+        <button className={`btn ${secondary ? "btn-secondary" : "btn-primary"}`} onClick={() => setOpen(true)}>
           <Plus size={15} /> New project
         </button>
       )}

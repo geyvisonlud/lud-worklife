@@ -32,7 +32,8 @@ export function RightPanelProvider({ children }: { children: React.ReactNode }) 
   const path = usePathname();
   const params = useSearchParams();
   // Not where the page has its own agenda / side column: Calendar, Tasks → List, Notes (Notion-like, its own sidebar).
-  const shown = !(path.startsWith("/calendar") || path.startsWith("/notes") || (path.startsWith("/tasks") && params.get("view") === "list"));
+  // Today has its own right column (deadlines, agenda, activity).
+  const shown = !(path === "/" || path.startsWith("/calendar") || path.startsWith("/notes") || (path.startsWith("/tasks") && params.get("view") === "list"));
   const [open, setOpenState] = useState(true);
   useEffect(() => {
     try {

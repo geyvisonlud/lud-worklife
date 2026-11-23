@@ -4,6 +4,7 @@ import { RegisterServiceWorker } from "@/components/NotificationsCard";
 import { Sidebar, TabBar } from "@/components/Nav";
 import { WorkProvider } from "@/components/TaskSheet";
 import { Main } from "@/components/Main";
+import { CommandPalette } from "@/components/CommandPalette";
 import { RightPanelProvider } from "@/components/RightPanel";
 import { HabitDock } from "@/components/Habits";
 import { authEnabled } from "@/lib/auth";
@@ -30,7 +31,7 @@ async function AppShell({ children }: { children: React.ReactNode }) {
   const day = today();
   const settingsP = getSettings();
   const [projects, overdue, settings, accounts, notion, habits, target, taskColumns, projectColumns, openByProject] = await Promise.all([
-    prisma.project.findMany({ where: { archived: false }, select: { id: true, name: true, emoji: true, color: true, stage: true }, orderBy: [{ stage: "asc" }, { position: "asc" }] }),
+    prisma.project.findMany({ where: { archived: false }, select: { id: true, name: true, emoji: true, color: true, stage: true, source: true }, orderBy: [{ stage: "asc" }, { position: "asc" }] }),
     prisma.task.count({ where: { status: { not: "done" }, dueDate: { lt: day } } }),
     settingsP,
     prisma.calendarAccount.findMany({ select: { lastSyncedAt: true, status: true } }),
@@ -39,15 +40,17 @@ async function AppShell({ children }: { children: React.ReactNode }) {
     settingsP.then((s) => (s.taskCalendarId ? prisma.calendar.findUnique({ where: { id: s.taskCalendarId }, select: { name: true } }) : null)),
     boardColumns("tasks"),
     boardColumns("projects"),
-    prisma.task.groupBy({ by: ["projectId"], where: { status: { not: "done" }, projectId: { not: null } }, _count: true }),
+    prisma.task.groupBy({ by: ["projectId"], where: { status: { not: "done" }, archivedAt: null }, _count: true }),
   ]);
   const open = new Map(openByProject.map((r) => [r.projectId, r._count]));
+  const inbox = open.get(null) ?? 0;
+  const openTotal = openByProject.reduce((n, r) => n + r._count, 0);
   // Sidebar: projects that aren't done, in board order (in progress first).
   const stageOrder = (k: string) => (k === "active" ? 0 : k === "done" ? 9 : 1 + projectColumns.findIndex((c) => c.key === k));
   const sideProjects = projects
     .filter((p) => p.stage !== "done")
     .sort((a, b) => stageOrder(a.stage) - stageOrder(b.stage))
-    .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, color: p.color, open: open.get(p.id) ?? 0 }));
+    .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, color: p.color, open: open.get(p.id) ?? 0, notion: p.source === "notion" }));
   const latest = (rows: { lastSyncedAt: Date | null }[]) =>
     rows.reduce<Date | null>((m, r) => (r.lastSyncedAt && (!m || r.lastSyncedAt > m) ? r.lastSyncedAt : m), null);
   const sync = [
@@ -56,8 +59,9 @@ async function AppShell({ children }: { children: React.ReactNode }) {
   ];
   return (
     <WorkProvider tz={appTimeZone()} today={day} projects={projects} defaultDuration={settings.defaultDuration} googleTarget={target?.name ?? null} taskColumns={taskColumns} projectColumns={projectColumns}>
-      <Sidebar badges={{ "/tasks": overdue }} authEnabled={authEnabled()} sync={sync} projects={sideProjects} />
+      <Sidebar counts={{ overdue, inbox, open: openTotal }} authEnabled={authEnabled()} sync={sync} projects={sideProjects} />
       <TabBar badges={{ "/tasks": overdue }} />
+      <CommandPalette />
       <RightPanelProvider>
         <Main>{children}</Main>
         <HabitDock habits={habits} />
