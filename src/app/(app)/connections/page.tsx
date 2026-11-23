@@ -8,6 +8,7 @@ import { formatDuration, relativeTime } from "@/lib/dates";
 import { calendarDTO, lastSyncs } from "@/lib/data";
 import { googleConfigured } from "@/lib/google";
 import { notionOAuthConfigured } from "@/lib/notion";
+import { INBOX_TITLE } from "@/lib/notion-inbox";
 import { getSettings } from "@/lib/settings";
 import { hasGmailScope } from "@/lib/email";
 import { aiConfigured } from "@/lib/email-ai";
@@ -186,6 +187,16 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
                 {n.method === "demo" ? "Demo workspace" : n.status === "ERROR" ? n.lastError : n.lastSyncedAt ? `Checked ${relativeTime(n.lastSyncedAt)}` : "Not synced yet"} · as{" "}
                 {n.userName ?? n.userEmail ?? "you"}
               </div>
+              {n.method !== "demo" && (
+                <div className={`mt-0.5 text-[12px] ${n.inboxError ? "text-warn" : "text-ink-3"}`}>
+                  {INBOX_TITLE}:{" "}
+                  {n.inboxError
+                    ? n.inboxError
+                    : n.inboxDatabaseId
+                      ? `new rows become tasks or projects${n.inboxSyncedAt ? ` · checked ${relativeTime(n.inboxSyncedAt)}` : ""}`
+                      : "not checked yet"}
+                </div>
+              )}
             </div>
             <DisconnectButton kind="notion" id={n.id} label={n.workspaceName} />
           </div>

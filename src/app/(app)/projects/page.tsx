@@ -1,3 +1,4 @@
+import { GoogleTasksAutoSync } from "@/components/ConnectionBits";
 import { ProjectBoard } from "@/components/Kanban";
 import { ProjectButton } from "@/components/ProjectSheet";
 import { PageHeader, StatStrip } from "@/components/ui";
@@ -13,6 +14,7 @@ export default async function ProjectsPage() {
   const dueSoon = projects.filter((p) => p.stage !== "done" && p.dueDate && daysBetween(day, p.dueDate) >= 0 && daysBetween(day, p.dueDate) <= 30);
   return (
     <div>
+      <GoogleTasksAutoSync />
       <PageHeader eyebrow="Board · drag cards between columns" title="Projects">
         <ProjectButton />
       </PageHeader>

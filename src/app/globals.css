@@ -853,3 +853,9 @@ dialog.sheet[open] {
   .task-check[data-burst][aria-checked="true"], .task-check-ring, .task-check-draw path { animation: none; stroke-dashoffset: 0; }
   .task-title { transition: none; }
 }
+
+/* Task tags: hue from the tag's name (data), lightness per theme. */
+.tag-chip { color: hsl(var(--h) 55% 38%); background: hsl(var(--h) 70% 50% / 0.1); }
+@media (prefers-color-scheme: dark) {
+  .tag-chip { color: hsl(var(--h) 75% 72%); background: hsl(var(--h) 70% 60% / 0.16); }
+}

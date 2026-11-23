@@ -11,6 +11,10 @@ import { dragState } from "./dragState";
 import { useReport, useWork } from "./TaskSheet";
 import { GoogleMark, NotionMark } from "./ui";
 
+/** Fired on window after a task is added or checked here, so side panels refresh right away. */
+export const TASKS_CHANGED = "lw:tasks-changed";
+const tasksChanged = () => window.dispatchEvent(new Event(TASKS_CHANGED));
+
 export const PRIORITY_COLOR = ["var(--ink-3)", "var(--c1)", "var(--warn)", "var(--bad)"];
 
 /**
@@ -44,7 +48,14 @@ export function TaskCheck({ task, size = 18 }: { task: TaskDTO; size?: number })
           }
         }
         // Let the animation play before the list refreshes (and the task moves to Done).
-        setTimeout(() => start(async () => void (!report(await toggleTask(task.id, next)) && setChecked(!next))), next ? 520 : 0);
+        setTimeout(
+          () =>
+            start(async () => {
+              if (!report(await toggleTask(task.id, next))) setChecked(!next);
+              else tasksChanged();
+            }),
+          next ? 520 : 0,
+        );
       }}
       className="task-check group/check relative inline-flex shrink-0 items-center justify-center rounded-full transition-[transform,background-color,box-shadow] duration-200 active:scale-90"
       data-burst={burst || undefined}
@@ -64,7 +75,7 @@ export function TaskCheck({ task, size = 18 }: { task: TaskDTO; size?: number })
 }
 
 /** Small meta line: project · due · time block · duration · Notion. */
-export function TaskMeta({ task, showProject = true }: { task: TaskDTO; showProject?: boolean }) {
+export function TaskMeta({ task, showProject = true, inline = false }: { task: TaskDTO; showProject?: boolean; inline?: boolean }) {
   const { tz, today, projects } = useWork();
   const project = showProject && task.projectId ? projects.find((p) => p.id === task.projectId) : null;
   const sched = task.scheduledStart ? new Date(task.scheduledStart) : null;
@@ -102,6 +113,7 @@ export function TaskMeta({ task, showProject = true }: { task: TaskDTO; showProj
       </span>,
     );
   if (task.fromNotion) bits.push(<NotionMark key="n" size={11} />);
+  for (const t of task.tags ?? []) bits.push(<TagChip key={`#${t}`} tag={t} />);
   if (task.attachments)
     bits.push(
       <span key="a" className="inline-flex items-center gap-0.5" title={`${task.attachments} attachment${task.attachments === 1 ? "" : "s"}`}>
@@ -114,8 +126,22 @@ export function TaskMeta({ task, showProject = true }: { task: TaskDTO; showProj
         <GoogleMark size={11} />
       </span>,
     );
+  if (inline && task.priority > 0) bits.push(<PriorityBars key="pr" level={task.priority} />);
   if (!bits.length) return null;
-  return <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-ink-2">{bits}</div>;
+  return <div className={`flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-ink-2 ${inline ? "mt-0.5 md:mt-0 md:justify-end" : "mt-0.5"}`}>{bits}</div>;
+}
+
+/** Priority as signal bars (1–3 filled), in the priority's color. */
+export function PriorityBars({ level }: { level: number }) {
+  const color = PRIORITY_COLOR[level] ?? PRIORITY_COLOR[0];
+  const label = ["No priority", "Low priority", "Medium priority", "High priority"][level] ?? "";
+  return (
+    <span className="inline-flex h-3 items-end gap-[1.5px]" title={label} aria-label={label}>
+      {[1, 2, 3].map((b) => (
+        <span key={b} className="w-[3px] rounded-[1px]" style={{ height: 3 + b * 3, background: b <= level ? color : "var(--surface-3)" }} />
+      ))}
+    </span>
+  );
 }
 
 /** A task in a list. `draggable` lets it be dropped on the calendar. */
@@ -125,11 +151,14 @@ export function TaskRow({
   draggable = false,
   compact = false,
   handle,
+  inline = false,
 }: {
   task: TaskDTO;
   showProject?: boolean;
   draggable?: boolean;
   compact?: boolean;
+  /** Wide rows: details on the right of the title (md+), like a workspace task list. */
+  inline?: boolean;
   /** Grip for reordering (SortableTasks). */
   handle?: React.ReactNode;
 }) {
@@ -155,11 +184,11 @@ export function TaskRow({
       <div className="pt-[1px]">
         <TaskCheck task={task} />
       </div>
-      <button type="button" onClick={() => openTask(task)} className="min-w-0 flex-1 text-left">
-        <div className="truncate text-[14.5px] leading-[1.35]">
+      <button type="button" onClick={() => openTask(task)} className={`min-w-0 flex-1 text-left ${inline ? "md:flex md:items-center md:gap-4" : ""}`}>
+        <div className={`truncate text-[14.5px] leading-[1.35] ${inline ? "md:min-w-0 md:flex-1" : ""}`}>
           <span className="task-title">{task.title}</span>
         </div>
-        {!compact && <TaskMeta task={task} showProject={showProject} />}
+        {!compact && <TaskMeta task={task} showProject={showProject} inline={inline} />}
       </button>
     </div>
   );
@@ -180,8 +209,17 @@ export function QuickAdd({ projectId, status, placeholder = "Add a task…", due
     setValue("");
     area.current?.focus();
     start(async () => {
-      const r = await createTask({ title: q.title, projectId: projectId ?? null, status, priority: q.priority, dueDate: q.dueDate ?? (dueToday ? today : null), ...(q.durationMin ? { durationMin: q.durationMin } : {}) });
+      const r = await createTask({
+        title: q.title,
+        projectId: projectId ?? null,
+        status,
+        priority: q.priority,
+        dueDate: q.dueDate ?? (dueToday ? today : null),
+        tags: q.tags,
+        ...(q.durationMin ? { durationMin: q.durationMin } : {}),
+      });
       if (!report(r)) setValue((v) => v || typed);
+      else tasksChanged();
     });
   };
   const area = useRef<HTMLTextAreaElement>(null);
@@ -251,7 +289,19 @@ export function ArchiveDoneButton({ ids }: { ids: string[] }) {
  * today's makes it due today), "upcoming" (dropping on another day's tasks moves it to that day) or none.
  * Tasks with a time block are ordered by time and have no grip.
  */
-export function SortableTasks({ tasks, showProject = true, compact = false, group }: { tasks: TaskDTO[]; showProject?: boolean; compact?: boolean; group?: "focus" | "upcoming" }) {
+export function SortableTasks({
+  tasks,
+  showProject = true,
+  compact = false,
+  group,
+  inline = false,
+}: {
+  tasks: TaskDTO[];
+  showProject?: boolean;
+  compact?: boolean;
+  group?: "focus" | "upcoming";
+  inline?: boolean;
+}) {
   const { today, tz } = useWork();
   const report = useReport();
   const [order, setOrder] = useState(tasks);
@@ -332,6 +382,7 @@ export function SortableTasks({ tasks, showProject = true, compact = false, grou
               task={t}
               showProject={showProject}
               compact={compact}
+              inline={inline}
               handle={
                 t.scheduledStart ? (
                   <span className="-ml-1.5 w-3.5 shrink-0" aria-hidden />
@@ -352,5 +403,21 @@ export function SortableTasks({ tasks, showProject = true, compact = false, grou
         );
       })}
     </div>
+  );
+}
+
+/** A task tag ("#urgent"): small and quiet, colored by its name (same tag → same color everywhere). */
+export function TagChip({ tag, onClick, active }: { tag: string; onClick?: () => void; active?: boolean }) {
+  const hue = [...tag].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+  const style = { "--h": hue } as React.CSSProperties;
+  const cls = `tag-chip inline-flex items-center rounded-[5px] px-1.5 py-[0.5px] text-[11px] font-medium leading-[16px] ${active ? "ring-1 ring-current" : ""}`;
+  return onClick ? (
+    <button type="button" onClick={onClick} className={cls} style={style} aria-pressed={active}>
+      #{tag}
+    </button>
+  ) : (
+    <span className={cls} style={style}>
+      #{tag}
+    </span>
   );
 }

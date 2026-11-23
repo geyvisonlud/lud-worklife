@@ -32,7 +32,10 @@ export function DayOverview({
   items,
   allDay,
   figures,
+  compact = false,
 }: {
+  /** Home layout: the greeting and figures live in the page header and stat strip; this shows the day itself. */
+  compact?: boolean;
   greeting: string;
   dateLabel: string;
   tz: string;
@@ -64,9 +67,15 @@ export function DayOverview({
       {/* greeting + now/next */}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 px-[var(--pad-x)]">
         <div className="min-w-0">
-          <div className="label-mono mb-2">{dateLabel}</div>
-          <h1 className="text-[30px] font-semibold leading-[1.08] tracking-[-0.035em] md:text-[40px]">{greeting}</h1>
-          <p className="mt-2 text-[14px] text-ink-2">
+          {compact ? (
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Today’s schedule</h2>
+          ) : (
+            <>
+              <div className="label-mono mb-2">{dateLabel}</div>
+              <h1 className="text-[30px] font-semibold leading-[1.08] tracking-[-0.035em] md:text-[40px]">{greeting}</h1>
+            </>
+          )}
+          <p className={`${compact ? "mt-1 text-[13px]" : "mt-2 text-[14px]"} text-ink-2`}>
             {current ? (
               <>
                 <span className="font-medium text-ink">Now:</span> {current.title} · until {formatClock(current.end)}
@@ -171,7 +180,8 @@ export function DayOverview({
       </div>
 
       {/* figures */}
-      <dl className="mt-4 grid grid-cols-2 border-t border-hairline sm:grid-cols-3 lg:grid-cols-6">
+      {compact && <div className="h-4" />}
+      <dl className={`${compact ? "hidden" : "mt-4"} grid grid-cols-2 border-t border-hairline sm:grid-cols-3 lg:grid-cols-6`}>
         {figures.map((f, i) => {
           const body = (
             <>

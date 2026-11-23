@@ -28,6 +28,8 @@ export type TaskDTO = {
   archivedAt: string | null;
   /** Notes, Drive files and links referenced from the task. */
   attachments: number;
+  /** Lowercase, without "#". */
+  tags: string[];
 };
 
 export type ProjectDTO = {
@@ -82,6 +84,7 @@ export const taskDTO = (t: Task & { _count?: { attachments?: number } }): TaskDT
   completedAt: t.completedAt?.toISOString() ?? null,
   archivedAt: t.archivedAt?.toISOString() ?? null,
   attachments: t._count?.attachments ?? 0,
+  tags: t.tags ?? [],
 });
 
 export const projectDTO = (p: Project & { tasks?: { status: string }[] }): ProjectDTO => ({
